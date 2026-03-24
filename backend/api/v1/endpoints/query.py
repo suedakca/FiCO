@@ -1,3 +1,4 @@
+from typing import List
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from models import schemas, database
@@ -6,40 +7,64 @@ from core.db import get_db
 
 router = APIRouter()
 
-@router.post("/", response_model=schemas.Response)
+@router.post("", response_model=schemas.Response)
 async def create_query(query_in: schemas.QueryCreate, db: Session = Depends(get_db)):
-    # 1. Save query to db
-    db_query = database.Query(
-        user_id=query_in.user_id,
-        query_text=query_in.query_text
-    )
-    db.add(db_query)
-    db.commit()
-    db.refresh(db_query)
+    # 1. Try to save query to db (Optional)
+    db_query_id = None
+    try:
+        db_query = database.Query(
+            user_id=query_in.user_id,
+            query_text=query_in.query_text
+        )
+        db.add(db_query)
+        db.commit()
+        db.refresh(db_query)
+        db_query_id = db_query.id
+    except Exception as e:
+        db.rollback()
+        print(f"⚠️ Query DB'ye kaydedilemedi: {e}")
 
-    # 2. Call RAG Service
+    # 2. Call RAG Service (Mandatory)
     try:
         rag_result = await rag_service.query(query_in.query_text)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"RAG Error: {str(e)}")
 
-    # 3. Save response to db
-    db_response = database.Response(
-        query_id=db_query.id,
-        answer_text=rag_result["answer_text"],
-        source_urls=",".join(rag_result["source_urls"]),
-        confidence_score=rag_result["confidence_score"]
-    )
-    db.add(db_response)
-    db.commit()
-    db.refresh(db_response)
+    # 3. Try to save response to db (Optional)
+    db_response_id = 1 # Fallback ID
+    timestamp = None
+    try:
+        if db_query_id:
+            db_response = database.Response(
+                query_id=db_query_id,
+                answer_text=rag_result["answer_text"],
+                source_urls=",".join(rag_result["source_urls"]),
+                confidence_score=rag_result["confidence_score"]
+            )
+            db.add(db_response)
+            db.commit()
+            db.refresh(db_response)
+            db_response_id = db_response.id
+            timestamp = db_response.timestamp
+    except Exception as e:
+        db.rollback()
+        print(f"⚠️ Response DB'ye kaydedilemedi: {e}")
 
-    # Convert to schema
+    # Convert to schema (Works even if DB fails)
+    import datetime
     return schemas.Response(
-        id=db_response.id,
-        query_id=db_response.query_id,
-        answer_text=db_response.answer_text,
+        id=db_response_id,
+        query_id=db_query_id or 1,
+        answer_text=rag_result["answer_text"],
         source_urls=rag_result["source_urls"],
-        confidence_score=db_response.confidence_score,
-        timestamp=db_response.timestamp
+        confidence_score=rag_result["confidence_score"],
+        hit_rate=rag_result.get("hit_rate", 0.0),
+        faithfulness=rag_result.get("faithfulness", 0.0),
+        citation_accuracy=rag_result.get("citation_accuracy", 0.0),
+        timestamp=timestamp or datetime.datetime.now()
     )
+
+@router.get("", response_model=List[schemas.Query])
+async def get_queries(user_id: str = "demo_user", db: Session = Depends(get_db)):
+    queries = db.query(database.Query).filter(database.Query.user_id == user_id).order_by(database.Query.timestamp.desc()).limit(10).all()
+    return queries

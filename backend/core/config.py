@@ -1,3 +1,4 @@
+import os
 from typing import List, Union
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import AnyHttpUrl, validator
@@ -34,6 +35,9 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     LLM_MODEL: str = "gpt-4o"
 
-    model_config = SettingsConfigDict(case_sensitive=True, env_file=".env")
+    model_config = SettingsConfigDict(
+        case_sensitive=True, 
+        env_file=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", ".env")
+    )
 
 settings = Settings()

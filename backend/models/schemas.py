@@ -20,6 +20,10 @@ class ResponseBase(BaseModel):
     answer_text: str
     source_urls: List[str]
     confidence_score: float
+    # Compliance Evaluation Metrics
+    hit_rate: float = 0.0
+    faithfulness: float = 0.0
+    citation_accuracy: float = 0.0
 
 class Response(ResponseBase):
     id: int
