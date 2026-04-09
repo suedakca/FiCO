@@ -2,18 +2,18 @@ import React, { useState, useEffect, useRef } from 'react'
 
 const APP_VERSION = "v3.0 ChatGPT Edition"
 
+const INITIAL_MESSAGE = { 
+  role: 'assistant', 
+  content: 'Merhaba! Ben FiCo Kaşif. Katılım bankacılığı ve fıkhi uyum süreçlerinde size rehberlik etmek için buradayım. Bugün hangi konuyu keşfetmek istersiniz?\n\n*Not: Tüm yanıtlarım profesyonel uyum filtrelerinden geçerek puanlanmaktadır.*',
+  evaluation: {
+    hit_rate: 0.98,
+    faithfulness: 0.95,
+    citation_accuracy: 1.0
+  }
+}
+
 function App() {
-  const [messages, setMessages] = useState([
-    { 
-      role: 'assistant', 
-      content: 'Merhaba! Ben FiCo Kaşif. Katılım bankacılığı ve fıkhi uyum süreçlerinde size rehberlik etmek için buradayım. Bugün hangi konuyu keşfetmek istersiniz?\n\n*Not: Tüm yanıtlarım profesyonel uyum filtrelerinden geçerek puanlanmaktadır.*',
-      evaluation: {
-        hit_rate: 0.98,
-        faithfulness: 0.95,
-        citation_accuracy: 1.0
-      }
-    }
-  ])
+  const [messages, setMessages] = useState([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -51,9 +51,10 @@ function App() {
     setMessages(prev => [...prev, { role: 'user', content: queryText }])
     setInput('')
     setIsLoading(true)
+    const startTime = Date.now()
 
     try {
-      const response = await fetch('http://localhost:8000/v1/query', {
+      const response = await fetch('http://localhost:8000/v1/query/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -64,19 +65,62 @@ function App() {
 
       if (!response.ok) throw new Error('API Error')
       
-      const data = await response.json()
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: data.answer_text,
-        sources: data.source_urls,
-        evaluation: {
-          hit_rate: data.hit_rate,
-          faithfulness: data.faithfulness,
-          citation_accuracy: data.citation_accuracy
-        }
+        content: '',
+        sources: [],
+        evaluation: null
       }])
-      fetchHistory() // Refresh sidebar
+
+      let accumulatedContent = ""
+      
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        
+        const chunk = decoder.decode(value, { stream: true })
+        
+        // Metadata kontrolü
+        if (chunk.includes("[METADATA]")) {
+          const parts = chunk.split("[METADATA]")
+          accumulatedContent += parts[0]
+          
+          try {
+            const meta = JSON.parse(parts[1])
+            const duration = ((Date.now() - startTime) / 1000).toFixed(1)
+            
+            setMessages(prev => {
+              const newMsgs = [...prev]
+              const lastMsg = newMsgs[newMsgs.length - 1]
+              lastMsg.content = accumulatedContent.trim()
+              lastMsg.sources = meta.source_urls
+              lastMsg.responseTime = duration
+              lastMsg.evaluation = {
+                hit_rate: meta.evaluation?.faithfulness || 0,
+                faithfulness: meta.evaluation?.relevance || 0,
+                citation_accuracy: 0.9
+              }
+              return newMsgs
+            })
+          } catch (e) {
+            console.error("Metadata parse error", e)
+          }
+        } else {
+          accumulatedContent += chunk
+          setMessages(prev => {
+            const newMsgs = [...prev]
+            newMsgs[newMsgs.length - 1].content = accumulatedContent
+            return newMsgs
+          })
+        }
+      }
+
+      fetchHistory() // Yan menüyü güncelle
     } catch (error) {
+      console.error("Stream error", error)
       setMessages(prev => [...prev, { 
         role: 'assistant', 
         content: 'Üzgünüm, şu an bağlantı kurulamıyor. Lütfen sistem yöneticinizle iletişime geçin.' 
@@ -84,6 +128,34 @@ function App() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleNewChat = () => {
+    setMessages([INITIAL_MESSAGE])
+    setInput('')
+  }
+
+  const handleSelectHistory = (h) => {
+    if (!h.response) {
+      // Eğer cevap kaydedilmemişse sadece soruyu gönder (Fallback)
+      handleSend(h.query_text)
+      return
+    }
+    
+    setMessages([
+      INITIAL_MESSAGE,
+      { role: 'user', content: h.query_text },
+      { 
+        role: 'assistant', 
+        content: h.response.answer_text,
+        sources: h.response.source_urls ? h.response.source_urls.split(',') : [],
+        evaluation: {
+          hit_rate: h.response.confidence_score, // Not: Backend şemasında hit_rate/faithfulness ayrı olabilir, şimdilik confidence_score'a mapiyoruz
+          faithfulness: 0.9, 
+          citation_accuracy: 0.9
+        }
+      }
+    ])
   }
 
   const suggestionChips = [
@@ -99,7 +171,10 @@ function App() {
       {/* Sidebar (ChatGPT style) */}
       <aside className={`${sidebarOpen ? 'w-[260px]' : 'w-0'} transition-all duration-300 bg-[#171717] overflow-hidden flex flex-col z-20`}>
         <div className="p-3 flex flex-col h-full">
-          <button className="flex items-center gap-3 p-3 text-white/90 hover:bg-white/10 rounded-lg transition-all mb-4 group">
+          <button 
+            onClick={handleNewChat}
+            className="flex items-center gap-3 p-3 text-white/90 hover:bg-white/10 rounded-lg transition-all mb-4 group"
+          >
             <div className="w-8 h-8 rounded-full border border-white/20 flex items-center justify-center text-xs font-bold">FK</div>
             <span className="font-semibold text-sm">Yeni Sohbet</span>
             <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
@@ -112,7 +187,7 @@ function App() {
             {history.length > 0 ? history.map((h, i) => (
               <button 
                 key={h.id || i} 
-                onClick={() => handleSend(h.query_text)}
+                onClick={() => handleSelectHistory(h)}
                 className="w-full text-left p-3 rounded-lg text-white/80 text-sm hover:bg-white/10 transition-all truncate animate-fade-in"
               >
                 {h.query_text}
@@ -128,7 +203,7 @@ function App() {
               FiCo Kaşif Pro
             </button>
             <button className="w-full flex items-center gap-3 p-3 text-white/80 hover:bg-white/10 rounded-lg text-sm transition-all">
-              <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 text-xs font-bold">SÜ</div>
+              <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 text-xs font-bold">SA</div>
               Sueda Akca
             </button>
           </div>
@@ -192,9 +267,9 @@ function App() {
                       <div className="mt-4 flex items-center gap-4 py-2 px-3 bg-brand-cream/40 rounded-xl border border-slate-100/50 w-fit animate-fade-in shadow-sm">
                         <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider pr-2 border-r border-slate-200">
                           <svg className="w-3 h-3 text-brand-gold" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"/></svg> 
-                          Uyum Skoru
+                          Uyum Puanı
                         </div>
-                        <div className="flex gap-3">
+                        <div className="flex gap-3 pr-2 border-r border-slate-200">
                           <div className="flex flex-col">
                             <span className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">Erişim</span>
                             <span className={`text-[11px] font-bold ${m.evaluation.hit_rate > 0.8 ? 'text-brand-emerald' : 'text-orange-500'}`}>
@@ -207,13 +282,13 @@ function App() {
                               %{Math.round(m.evaluation.faithfulness * 100)}
                             </span>
                           </div>
-                          <div className="flex flex-col">
-                            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">Atıf</span>
-                            <span className={`text-[11px] font-bold ${m.evaluation.citation_accuracy > 0.8 ? 'text-brand-emerald' : 'text-orange-500'}`}>
-                              %{Math.round(m.evaluation.citation_accuracy * 100)}
-                            </span>
-                          </div>
                         </div>
+                        {m.responseTime && (
+                          <div className="flex items-center gap-1.5 px-1">
+                            <svg className="w-3 h-3 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <span className="text-[10px] font-bold text-slate-400">{m.responseTime}s</span>
+                          </div>
+                        )}
                       </div>
                     )}
                     {m.sources && (

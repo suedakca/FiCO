@@ -1,6 +1,7 @@
 from typing import List
 from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy.orm import Session
+from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session, joinedload
 from models import schemas, database
 from services.rag_service import rag_service
 from core.db import get_db
@@ -64,7 +65,16 @@ async def create_query(query_in: schemas.QueryCreate, db: Session = Depends(get_
         timestamp=timestamp or datetime.datetime.now()
     )
 
+@router.post("/stream")
+async def stream_query(query_in: schemas.QueryBase):
+    """Anlık veri akışı (Streaming) sağlayan endpoint."""
+    async def event_generator():
+        async for chunk in rag_service.stream_query(query_in.query_text):
+            yield chunk
+
+    return StreamingResponse(event_generator(), media_type="text/plain")
+
 @router.get("", response_model=List[schemas.Query])
 async def get_queries(user_id: str = "demo_user", db: Session = Depends(get_db)):
-    queries = db.query(database.Query).filter(database.Query.user_id == user_id).order_by(database.Query.timestamp.desc()).limit(10).all()
+    queries = db.query(database.Query).options(joinedload(database.Query.response)).filter(database.Query.user_id == user_id).order_by(database.Query.timestamp.desc()).limit(10).all()
     return queries

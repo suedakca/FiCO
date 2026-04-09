@@ -12,3 +12,8 @@ python-jose[cryptography]
 passlib[bcrypt]
 python-dotenv
 numpy
+langchain-community
+chromadb
+rank_bm25
+langchain-chroma
+ragas

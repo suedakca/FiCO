@@ -5,7 +5,11 @@
     "content": "Mudaraba (Emek-Sermaye Ortaklığı) sözleşmelerinde zarar, sermaye sahibine (Rabbü'l-mal) aittir. İşletmeci (Mudarib), kasıt, ihmal veya sözleşme şartlarını ihlal etmediği sürece zarardan sorumlu tutulamaz ve emeğinin karşılığını alamaz.",
     "metadata": {
       "category": "Mudaraba",
-      "tags": ["zarar paylaşımı", "sermaye", "ihmal"],
+      "tags": [
+        "zarar paylaşımı",
+        "sermaye",
+        "ihmal"
+      ],
       "title": "Mudaraba Zarar Paylaşımı",
       "exact_citation": "AAOIFI-SS-13, Madde 4/1",
       "last_updated": "2024-01-01"
@@ -17,7 +21,11 @@
     "content": "Kripto varlıkların teminat gösterilerek finansman kullandırılması, söz konusu varlıkların mülkiyet ve hukuki statüsündeki belirsizlikler (garar) nedeniyle şu aşamada uygun görülmemiştir.",
     "metadata": {
       "category": "Teminat",
-      "tags": ["kripto varlık", "garar", "finansman"],
+      "tags": [
+        "kripto varlık",
+        "garar",
+        "finansman"
+      ],
       "title": "Kripto Varlık Teminatı",
       "exact_citation": "KT-İFK-2025/102",
       "last_updated": "2025-01-15"
@@ -25,13 +33,17 @@
   },
   {
     "id": "std_058",
-    "source": "AAOIFI Sharia Standard No: 18",
+    "source": "AAOIFI Sharia Standard No: 8 (Murabaha)",
     "content": "Tevelliyet satışı, malın alış fiyatı üzerinden herhangi bir kâr eklenmeksizin satılmasıdır. Bu tür satışlarda satıcı, malın alış fiyatını ve varsa ek maliyetleri dürüstlükle beyan etmek zorundadır.",
     "metadata": {
       "category": "Satış Türleri",
-      "tags": ["tevelliyet", "maliyetine satış", "şeffaflık"],
+      "tags": [
+        "tevelliyet",
+        "maliyetine satış",
+        "şeffaflık"
+      ],
       "title": "Tevelliyet Satışı Prensipleri",
-      "exact_citation": "AAOIFI-SS-18, Madde 3/2",
+      "exact_citation": "AAOIFI-SS-8, Madde 3/2",
       "last_updated": "2024-03-20"
     }
   },
@@ -41,7 +53,11 @@
     "content": "Konut finansmanında ekspertiz ücreti, tapu harcı ve sigorta gibi üçüncü taraflara ödenen fiili masraflar müşteriye yansıtılabilir. Ancak bu masrafların üzerine banka tarafından ek bir kâr marjı konulması 'hizmet bedeli' adı altında olsa dahi faiz şüphesi nedeniyle yasaktır.",
     "metadata": {
       "category": "Konut Finansmanı",
-      "tags": ["ekspertiz", "masraf yansıtma", "hizmet bedeli"],
+      "tags": [
+        "ekspertiz",
+        "masraf yansıtma",
+        "hizmet bedeli"
+      ],
       "title": "Finansman Ek Masrafları",
       "exact_citation": "KT-UR-V2, Bölüm 4.2",
       "last_updated": "2024-06-10"
@@ -53,7 +69,11 @@
     "content": "Emtia Murabahası (Teverruk) işlemlerinde, bankanın satın aldığı emtiayı aynı mecliste veya organize bir piyasada anlık olarak geri satması (organize teverruk), gerçek bir ticari irade barındırmadığı gerekçesiyle fıkhi kurullar tarafından kısıtlanmıştır.",
     "metadata": {
       "category": "Teverruk",
-      "tags": ["likidite yönetimi", "organize teverruk", "ticari irade"],
+      "tags": [
+        "likidite yönetimi",
+        "organize teverruk",
+        "ticari irade"
+      ],
       "title": "Organize Teverruk Yasağı",
       "exact_citation": "AAOIFI-SS-21, Madde 5/A",
       "last_updated": "2023-12-01"
@@ -65,7 +85,11 @@
     "content": "Müşterinin kredi kartı borcunu başka bir katılım bankasından aldığı finansman ile kapatması (borç transferi), borcun borçla takası (bey'ü-l kali bi-l kali) yasağına girmemesi için, yeni finansmanın doğrudan mal veya hizmet alımına dayandırılması şartıyla mümkündür.",
     "metadata": {
       "category": "Borç Transferi",
-      "tags": ["kredi kartı kapatma", "borç takası", "finansman"],
+      "tags": [
+        "kredi kartı kapatma",
+        "borç takası",
+        "finansman"
+      ],
       "title": "Borç Transferi ve Takas",
       "exact_citation": "KT-İFK-2024/EK-130",
       "last_updated": "2024-09-05"
@@ -77,7 +101,11 @@
     "content": "Döviz alım satım (Sarf) işlemlerinde bedellerin (semen ve mebi) peşin olması esastır. Vadeli döviz alım satımı faiz (riba el-nesi'e) kapsamına girer ve kesinlikle yasaktır.",
     "metadata": {
       "category": "Sarf",
-      "tags": ["döviz", "vade yasağı", "riba"],
+      "tags": [
+        "döviz",
+        "vade yasağı",
+        "riba"
+      ],
       "title": "Sarf Sözleşmesi Kuralları",
       "exact_citation": "AAOIFI-SS-5, Madde 2/1",
       "last_updated": "2024-01-01"
@@ -89,7 +117,11 @@
     "content": "Dijital cüzdanlarda tutulan bakiyelerin değerlendirilmesi sürecinde, paranın repo veya faizli enstrümanlarda gecelik işletilmesi katılım bankacılığı prensiplerine aykırıdır. Bu bakiyeler sadece faizsiz likidite havuzlarında değerlendirilmelidir.",
     "metadata": {
       "category": "Dijital Bankacılık",
-      "tags": ["dijital cüzdan", "likidite", "repo yasağı"],
+      "tags": [
+        "dijital cüzdan",
+        "likidite",
+        "repo yasağı"
+      ],
       "title": "Dijital Cüzdan Likidite Yönetimi",
       "exact_citation": "KT-DBK-V1, Madde 7.4",
       "last_updated": "2025-02-10"
@@ -101,7 +133,11 @@
     "content": "Mudârabe sözleşmesinde zarar, kural olarak sermaye sahibine aittir. İşletmeci taraf emeğini kaybeder; kusur, ihmal veya sözleşmeye aykırılık yoksa sermaye zararını ayrıca tazmin etmez.",
     "metadata": {
       "category": "Mudârabe",
-      "tags": ["zarar paylaşımı", "sermaye sahibi", "emek-sermaye ortaklığı"]
+      "tags": [
+        "zarar paylaşımı",
+        "sermaye sahibi",
+        "emek-sermaye ortaklığı"
+      ]
     }
   },
   {
@@ -110,7 +146,11 @@
     "content": "Müşâreke ortaklığında zarar, ortakların sermaye payları oranında paylaşılır. Bunun tersini öngören bir şart geçerli kabul edilmez; yönetici ortak ancak kusuru veya sözleşmeye aykırı davranışı varsa sorumlu olur.",
     "metadata": {
       "category": "Müşâreke",
-      "tags": ["ortaklık", "zarar paylaşımı", "sermaye oranı"]
+      "tags": [
+        "ortaklık",
+        "zarar paylaşımı",
+        "sermaye oranı"
+      ]
     }
   },
   {
@@ -119,7 +159,11 @@
     "content": "Organize teverruk, klasik teverruk şartlarını tam taşımadığı ve faizli işleme benzer sonuçlar doğurduğu için genel bir fonlama ürünü olarak uygun görülmez. Ancak zorunlu ve sınırlı bazı durumlarda istisnai değerlendirme yapılabilir.",
     "metadata": {
       "category": "Teverruk",
-      "tags": ["organize teverruk", "likidite", "istisnai kullanım"]
+      "tags": [
+        "organize teverruk",
+        "likidite",
+        "istisnai kullanım"
+      ]
     }
   },
   {
@@ -128,7 +172,11 @@
     "content": "Vadeli döviz satımı, sarf akdinde peşinlik şartına aykırı görüldüğü için meşru kabul edilmez. Buna karşılık ileri tarihli kur sabitlemesi, bağlayıcı olmayan bir vaad yapısı içinde ayrı değerlendirilir.",
     "metadata": {
       "category": "Sarf",
-      "tags": ["döviz", "forward", "peşinlik şartı"]
+      "tags": [
+        "döviz",
+        "forward",
+        "peşinlik şartı"
+      ]
     }
   },
   {
@@ -137,7 +185,11 @@
     "content": "Murâbaha işleminde banka, malı önce kendisi edinmeli ve ardından müşteriye satmalıdır. Mal müşteri tarafından daha önce hukuken/fiilen edinilmişse, aynı mal üzerinden sonradan murâbaha kurulması uygun değildir.",
     "metadata": {
       "category": "Murâbaha",
-      "tags": ["mülkiyet", "önceden satın alma", "finansman kurgusu"]
+      "tags": [
+        "mülkiyet",
+        "önceden satın alma",
+        "finansman kurgusu"
+      ]
     }
   },
   {
@@ -146,7 +198,11 @@
     "content": "Murâbahada maliyete yalnızca mal ile doğrudan ilgili giderler eklenebilir. Bunun dışında masraf veya maliyet adı altında müşteriden ilave komisyon ya da ücret alınması uygun görülmez.",
     "metadata": {
       "category": "Murâbaha",
-      "tags": ["komisyon", "doğrudan masraf", "maliyet şeffaflığı"]
+      "tags": [
+        "komisyon",
+        "doğrudan masraf",
+        "maliyet şeffaflığı"
+      ]
     }
   },
   {
@@ -155,7 +211,11 @@
     "content": "Murâbaha konusu mal, müşteriye satılmadan önce bankanın mülkiyetindeyse bu dönemdeki sigorta sorumluluğu ve masrafı bankaya aittir. Bankanın yaptığı uygun sigorta giderleri maliyete dahil edilebilir.",
     "metadata": {
       "category": "Murâbaha",
-      "tags": ["sigorta", "mülkiyet riski", "maliyete ekleme"]
+      "tags": [
+        "sigorta",
+        "mülkiyet riski",
+        "maliyete ekleme"
+      ]
     }
   },
   {
@@ -164,7 +224,86 @@
     "content": "Faaliyet konusu İslami ilkelere açıkça aykırı olan şirketlerin pay senetlerinin ihracı ve alım satımı uygun görülmez. Uygunluk değerlendirmesinde şirketin ana faaliyet alanı temel ölçüttür.",
     "metadata": {
       "category": "Sermaye Piyasaları",
-      "tags": ["pay senedi", "faaliyet alanı", "şer'i uygunluk"]
+      "tags": [
+        "pay senedi",
+        "faaliyet alanı",
+        "şer'i uygunluk"
+      ]
+    }
+  },
+  {
+    "id": "pub_009",
+    "source": "TKBB Danışma Kurulu İşleyiş Esasları",
+    "content": "TKBB Danışma Kurulu, katılım bankacılığı ilke ve standartlarını belirlemek, genel nitelikli kararlar (fetvalar) almak ve bankalar ile müşteriler arasındaki uyuşmazlıklarda görüş bildirmekle yetkilidir.",
+    "metadata": {
+      "category": "Kurumsal",
+      "tags": [
+        "danışma kurulu",
+        "fetva",
+        "standart belirleme"
+      ],
+      "title": "TKBB Danışma Kurulu Görevleri",
+      "last_updated": "2025-01-01"
+    }
+  },
+  {
+    "id": "pub_010",
+    "source": "TKBB Katılım Finansı İlkelerine Uygun Olmayan Gelirler Standardı",
+    "content": "Faizli işlemler veya fıkhen caiz olmayan faaliyetlerden elde edilen gelirler banka tarafından kendi yararına kullanılamaz. Bu gelirler, uygun bir tasfiye süreciyle toplumsal fayda sağlayacak alanlara (bağış vb.) aktarılmalıdır.",
+    "metadata": {
+      "category": "Tasfiye",
+      "tags": [
+        "uygun olmayan gelir",
+        "faiz tasfiyesi",
+        "bağış"
+      ],
+      "title": "Arındırma ve Tasfiye Prensipleri",
+      "last_updated": "2024-11-20"
+    }
+  },
+  {
+    "id": "pub_011",
+    "source": "TKBB Muşaraka Standardı (2025)",
+    "content": "Muşaraka ortaklığında kar paylaşımı tarafların serbest iradesiyle belirlenir; ancak zarar paylaşımı mutlaka sermaye payları oranında yapılmalıdır. Zararın sermaye oranından farklı dağıtılması şartı geçersizdir.",
+    "metadata": {
+      "category": "Muşaraka",
+      "tags": [
+        "ortaklık",
+        "zarar paylaşımı",
+        "sermaye oranı"
+      ],
+      "title": "Muşaraka Kar-Zarar Dağılımı",
+      "last_updated": "2025-02-15"
+    }
+  },
+  {
+    "id": "pub_012",
+    "source": "TKBB Kefalet Standardı",
+    "content": "Katılım bankaları tarafından verilen garantiler ve kefaletler, ancak fıkhen meşru olan mal ve hizmetlerin finansmanı için kullanılabilir. Faizli kredilerin temini için kefil olunması uygun değildir.",
+    "metadata": {
+      "category": "Kefalet",
+      "tags": [
+        "garanti",
+        "kefalet",
+        "meşruiyet"
+      ],
+      "title": "Kefalet ve Garanti İşlemleri",
+      "last_updated": "2024-05-10"
+    }
+  },
+  {
+    "id": "pub_013",
+    "source": "TKBB Murabaha Standardı (Pre-Acquisition)",
+    "content": "Murabahada bankanın malı müşteriye satmadan önce hukuken ve fiilen (kabz) edinmiş olması şarttır. Müşterinin zaten satın aldığı bir malın finansmanı murabaha yoluyla yapılamaz; aksi takdirde işlem bir borç-nakit takasına dönüşür.",
+    "metadata": {
+      "category": "Murabaha",
+      "tags": [
+        "kabz",
+        "mülkiyet",
+        "önceden alım yasağı"
+      ],
+      "title": "Murabaha Mülkiyet Şartı",
+      "last_updated": "2024-03-01"
     }
   }
 ]
