@@ -4,6 +4,12 @@ from backend.oracle.rag import retrieve_context
 from backend.oracle.classifier import query_classifier
 from backend.oracle.governance import governance_engine
 from backend.core.cache import query_cache
+from backend.core.config import settings
+from openai import OpenAI
+
+# LLM İstemcisi Başlat (Sadece yanıt üretiminde kullanacağız)
+client = OpenAI(api_key=settings.OPENAI_API_KEY) if getattr(settings, 'OPENAI_API_KEY', None) else None
+
 
 class FiCOInferenceV32:
     """FiCO v3.2 - Trusted AI System Inference Motoru (Deterministic & Governed)."""
@@ -43,7 +49,8 @@ class FiCOInferenceV32:
         # 4. Tutarlılık Doğrulaması (Twin-Inference - Sadece Production Modunda)
         if mode == "production" and not result.get("escalated"):
             twin_result = self._execute_inference(normalized_query, mode)
-            if twin_result["answer"] != result["answer"]:
+            # Metin bazlı LLM tutarsızlığı yerine hukuki kaynak ve sınıflandırma tutarlılığını test et
+            if twin_result["query_type"] != result["query_type"] or len(twin_result.get("sources", [])) != len(result.get("sources", [])):
                 # Tutarsızlık durumunda eskalasyon
                 result["escalated"] = True
                 result["answer"] = "This matter should be escalated due to internal consistency mismatch. (Sistem tutarsızlığı tespit edilmiştir.)"
@@ -82,14 +89,41 @@ class FiCOInferenceV32:
                 "policy_versions_used": [d.get("metadata", {}).get("version", "v1.0") for d in context_docs]
             }
 
-        # Dinamik (Mock) Answer ve Decision Trace
+        # Dinamik Generative Answer ve Decision Trace
         if context_docs:
             top_doc = context_docs[0]
             content = top_doc.get("content", "İçerik bulunamadı.")
             source_name = top_doc.get("metadata", {}).get("source", "Bilinmeyen Kaynak")
             rule_id = top_doc.get("metadata", {}).get("rule_id", "Kural-Yok")
             
-            answer = f"HÜKÜM:\nBanka v3.2 politikası çerçevesinde işlem {source_name} standartlarına tabidir.\n\nGEREKÇE:\n{content}"
+            # OpenAI ile Anlamlı Yanıt Üretimi
+            answer = "Yanıt üretilemiyor."
+            if client:
+                try:
+                    prompt = f"""Sen FiCO (Katılım Bankacılığı Yapay Zeka Uzmanı) asistanısın.
+Kullanıcının sorusu: {query}
+
+Bulunan En Uygun Bağlam (RAG):
+{content}
+Kaynak: {source_name} ({rule_id})
+
+Lütfen Soruya KESİNLİKLE şu formatta cevap ver:
+HÜKÜM:
+[Soruya net ve kısa bir açıklama veya hüküm cevabı]
+
+GEREKÇE:
+[Verilen bağlamı baz alarak açıklayıcı nedenler]"""
+                    response = client.chat.completions.create(
+                        model=settings.LLM_MODEL,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=0,
+                        max_tokens=600
+                    )
+                    answer = response.choices[0].message.content
+                except Exception as e:
+                    answer = f"HÜKÜM:\nBanka v3.2 politikası çerçevesinde işlem {source_name} standartlarına tabidir.\n\nGEREKÇE:\n{content} (LLM Error: {str(e)})"
+            else:
+                answer = f"HÜKÜM:\nBanka v3.2 politikası çerçevesinde işlem {source_name} standartlarına tabidir.\n\nGEREKÇE:\n{content}"
             
             decision_trace = {
                 "step_1": f"Sorgu sınıflandırması: {query_type}",

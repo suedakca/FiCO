@@ -21,6 +21,7 @@ function App() {
   const [history, setHistory] = useState([])
   const [showThought, setShowThought] = useState(false) // Analiz şeffaflığı kontrolü
   const chatEndRef = useRef(null)
+  const isFetchingRef = useRef(false)
 
   const fetchHistory = async () => {
     try {
@@ -47,15 +48,18 @@ function App() {
   }, [messages])
 
   const handleSend = async (text = input) => {
-    const queryText = text || input
-    if (!queryText.trim() || isLoading) return
+    const queryText = typeof text === 'string' ? text : input
+    if (!queryText.trim() || isFetchingRef.current) return
     
+    isFetchingRef.current = true
+    setIsLoading(true)
+    const msgId = Date.now()
+
     setMessages(prev => [...prev, 
-      { role: 'user', content: queryText },
-      { role: 'assistant', content: '', isAnalyzing: true }
+      { id: msgId + 1, role: 'user', content: queryText },
+      { id: msgId, role: 'assistant', content: '', isAnalyzing: true }
     ])
     setInput('')
-    setIsLoading(true)
     const startTime = Date.now()
 
     try {
@@ -74,36 +78,37 @@ function App() {
       const data = await response.json()
       const duration = ((Date.now() - startTime) / 1000).toFixed(1)
       
-      setMessages(prev => {
-        const newMsgs = [...prev]
-        const lastMsg = newMsgs[newMsgs.length - 1]
-        lastMsg.isAnalyzing = false
-        lastMsg.content = data.answer
-        lastMsg.sources = data.sources ? data.sources.map(s => s.metadata?.source || s.metadata?.rule_id || 'Kaynak Belgeler') : []
-        lastMsg.evaluation = {
-          hit_rate: data.confidence || 0,
-          faithfulness: data.confidence || 0,
-          citation_accuracy: data.cache_hit ? 1.0 : 0.9
-        }
-        lastMsg.thought = data.decision_trace ? JSON.stringify(data.decision_trace, null, 2) : "Twin-Inference basarili."
-        lastMsg.responseTime = duration
-        lastMsg.escalated = data.escalated
-        lastMsg.queryType = data.query_type
-        return newMsgs
-      })
+      setMessages(prev => prev.map(msg => 
+        msg.id === msgId ? {
+          ...msg,
+          isAnalyzing: false,
+          content: data.answer || "Cevap üretilemedi.",
+          sources: data.sources ? data.sources.map(s => s.metadata?.source || s.metadata?.rule_id || 'Kaynak Belgeler') : [],
+          evaluation: {
+            hit_rate: data.confidence || 0,
+            faithfulness: data.confidence || 0,
+            citation_accuracy: data.cache_hit ? 1.0 : 0.9
+          },
+          thought: data.decision_trace ? JSON.stringify(data.decision_trace, null, 2) : "Twin-Inference başarılı.",
+          responseTime: duration,
+          escalated: data.escalated,
+          queryType: data.query_type
+        } : msg
+      ))
 
       fetchHistory() // Yan menüyü güncelle
     } catch (error) {
       console.error("API error", error)
-      setMessages(prev => {
-        const newMsgs = [...prev]
-        const lastMsg = newMsgs[newMsgs.length - 1]
-        lastMsg.isAnalyzing = false
-        lastMsg.content = 'Üzgünüm, şu an bağlantı kurulamıyor. Lütfen sistem yöneticinizle iletişime geçin.'
-        return newMsgs
-      })
+      setMessages(prev => prev.map(msg => 
+        msg.id === msgId ? {
+          ...msg,
+          isAnalyzing: false,
+          content: 'Üzgünüm, şu an bağlantı kurulamıyor. Lütfen sistem yöneticinizle iletişime geçin.'
+        } : msg
+      ))
     } finally {
       setIsLoading(false)
+      isFetchingRef.current = false
     }
   }
 
