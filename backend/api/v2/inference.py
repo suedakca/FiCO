@@ -19,8 +19,8 @@ class FiCOInferenceV32:
     def normalize_query(self, query: str) -> str:
         """Sorguyu standartlaştırır ve determinizm için hazırlar."""
         query = query.lower().strip()
-        # Gürültü ve fazla boşluk temizleme
-        query = re.sub(r'[^\w\s\?]', '', query)
+        # Noktalama işaretlerini (soru işareti dahil) temizle
+        query = re.sub(r'[^\w\s]', '', query)
         query = " ".join(query.split())
         return query
 

@@ -88,7 +88,7 @@ async def ask_question(request: QuestionRequest):
 async def submit_feedback(request: FeedbackRequest):
     """Kullanıcı geri bildirimlerini toplar ve öz-iyileştirme için kaydeder."""
     try:
-        feedback_loop.record_feedback(request.dict())
+        feedback_loop.record_feedback(request.model_dump())
         return {"status": "success", "message": "Geri bildiriminiz kaydedilmiştir."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

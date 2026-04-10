@@ -14,12 +14,17 @@ class GovernanceEngine:
         }
 
     def get_priority_score(self, source: str) -> float:
+        """Kaynağa göre öncelik skoru döner (0.0 - 1.0 arası normalize)."""
         score = 1
+        match_found = False
+        source_lower = source.lower()
         for key, value in self.priority_map.items():
-            if key.lower() in source.lower():
+            k_lower = key.lower()
+            if k_lower in source_lower or source_lower in k_lower:
                 score = value
+                match_found = True
                 break
-        return score / 4.0
+        return (score / 4.0) if match_found else 0.25
 
     def select_active_policies(self, chunks: List[Dict[str, Any]], current_date: str = None) -> List[Dict[str, Any]]:
         """Sadece yürürlükte olan politikaları seçer (Effective Date kontrolü)."""

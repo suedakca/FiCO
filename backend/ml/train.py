@@ -1,13 +1,46 @@
 # NOTE: Bu script Unsloth kütüphanesi kurulu olan bir GPU ortamında çalıştırılmalıdır.
 import os
 import torch
-from unsloth import FastLanguageModel
+try:
+    from unsloth import FastLanguageModel
+    HAS_UNSLOTH = True
+except ImportError:
+    HAS_UNSLOTH = False
+    print("⚠️ Warning: 'unsloth' not found. Training logic will be disabled.")
+
 from datasets import load_dataset
-from trl import SFTTrainer
+try:
+    from trl import SFTTrainer
+except ImportError:
+    pass
+
 from transformers import TrainingArguments
-from training.config import TrainingConfig
+try:
+    # Proje yapısına göre import yolu düzeltildi
+    from .config import TrainingConfig
+except ImportError:
+    # Fallback if run as script
+    class TrainingConfig:
+        model_name = "google/gemma-2b-it"
+        max_seq_length = 2048
+        load_in_4bit = True
+        dataset_path = "backend/data/sft_train.json"
+        batch_size = 2
+        gradient_accumulation_steps = 4
+        learning_rate = 2e-4
+        max_steps = 60
+        logging_steps = 1
+        optimizer = "adamw_8bit"
+        weight_decay = 0.01
+        lr_scheduler_type = "linear"
+        seed = 42
+        output_dir = "backend/ml/outputs"
+        r = 16
 
 def train_fico_model():
+    if not HAS_UNSLOTH:
+        print("❌ Error: Training aborted. 'unsloth' is required for training.")
+        return
     config = TrainingConfig()
     
     # 1. Modeli ve Tokenizer'ı Yükle
