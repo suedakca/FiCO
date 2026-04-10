@@ -63,14 +63,20 @@ body {
   left: 0;
 }
 
-/* Sidebar Design - Professional Dusty */
+/* v4.4 Floating & Glass Sidebar */
 .sidebar {
-  width: 260px;
-  background-color: var(--color-brand-sidebar);
-  border-right: 1px solid var(--color-brand-border);
+  width: 280px;
+  background-color: rgba(241, 233, 235, 0.7); /* Translucent Dusty Rose */
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(231, 221, 225, 0.5);
+  border-radius: 24px;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  margin: 1rem 0 1rem 1rem; /* Floating Effect */
+  box-shadow: 0 8px 32px rgba(157, 108, 123, 0.05);
+  z-index: 40;
 }
 
 /* Centered Chat Main Area */
@@ -87,8 +93,85 @@ body {
 
 .chat-content-limit {
   width: 100%;
-  max-width: 820px;
+  max-width: 840px;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%; /* Allow it to fill the scroll container */
+}
+
+/* Hero Section Styles - More Weighted to Bottom-Center */
+.hero-container {
+  display: flex;
+  flex-grow: 1; 
+  flex-direction: column;
+  align-items: center;
+  justify-content: center; 
+  text-align: center;
+  padding: 10vh 1rem 0 1rem; /* Lowered even more */
+  overflow: hidden;
+}
+
+.hero-title {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: 2.25rem;
+  color: var(--color-brand-primary);
+  letter-spacing: -0.02em;
+  margin-bottom: 0.5rem;
+}
+
+.hero-subtitle {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: 1rem;
+  color: var(--color-brand-text-secondary);
+  max-width: 480px;
+  line-height: 1.5;
+  margin-bottom: 3rem;
+}
+
+/* Suggestions Row - Balanced Height, No Clipping */
+.suggestions-row {
+  display: flex;
+  gap: 1.25rem;
+  width: 100%;
+  max-width: 960px;
+  padding: 2.5rem 2rem 0rem 2rem; /* Balanced padding to prevent clipping */
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  justify-content: flex-start;
+}
+
+.suggestions-row::-webkit-scrollbar {
+  display: none;
+}
+
+.suggestion-card {
+  flex: 0 0 220px; 
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1.75rem;
+  min-height: 150px; /* Increased height for a fuller look */
+  text-align: left;
+  background-color: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(157, 108, 123, 0.15);
+  border-radius: 28px;
+  transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(157, 108, 123, 0.04);
+}
+
+.suggestion-card:hover {
+  border-color: var(--color-brand-primary);
+  background-color: var(--color-brand-surface);
+  transform: translateY(-6px) scale(1.02);
+  box-shadow: 0 16px 32px rgba(157, 108, 123, 0.1);
 }
 
 /* Message Styles - Dusty Rose Theme */
@@ -99,7 +182,7 @@ body {
   max-width: 70%;
   padding: 1rem 1.25rem;
   color: var(--color-brand-text);
-  font-weight: 400; /* Slightly heavier than base for legibility */
+  font-weight: 400;
   box-shadow: 0 1px 2px rgba(0,0,0,0.02);
 }
 
@@ -109,44 +192,41 @@ body {
   border: 1px solid var(--color-brand-border);
   border-radius: 20px 20px 20px 4px;
   max-width: 75%;
-  padding: 1.5rem;
-  box-shadow: 0 1px 3px rgba(157, 108, 123, 0.04);
+  padding: 1.75rem;
+  box-shadow: 0 2px 8px rgba(157, 108, 123, 0.04);
 }
 
-/* Floating Clean Input (Dusty Focus) */
+/* Floating Clean Input */
 .input-area-sticky {
   position: sticky;
   bottom: 0;
   width: 100%;
-  padding: 1.5rem 0 2rem 0;
+  padding: 1.5rem 0 2.5rem 0;
   background: linear-gradient(180deg, rgba(250, 247, 249, 0) 0%, rgba(250, 247, 249, 1) 20%);
 }
 
 .input-pill {
   background-color: var(--color-brand-surface);
   border: 1px solid var(--color-brand-border);
-  border-radius: 28px;
+  border-radius: 32px;
   display: flex;
   align-items: center;
-  padding: 4px 8px 4px 20px;
-  box-shadow: 0 4px 12px rgba(157, 108, 123, 0.06);
-  transition: all 0.2s;
+  padding: 6px 10px 6px 24px;
+  box-shadow: 0 10px 30px rgba(157, 108, 123, 0.08);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .input-pill:focus-within {
   border-color: var(--color-brand-primary);
-  box-shadow: 0 4px 20px rgba(157, 108, 123, 0.1);
+  box-shadow: 0 12px 40px rgba(157, 108, 123, 0.12);
+  transform: translateY(-1px);
 }
 
-/* Typography inside cards */
-.verdict-title {
-  display: block;
+/* Menu Font Polish */
+.menu-item-text {
   font-family: var(--font-display);
-  font-weight: 600; /* Semibold for contrast but not too chunky */
-  font-size: 1.05rem;
-  margin-bottom: 0.75rem;
-  color: var(--color-brand-primary); 
-  letter-spacing: -0.01em;
+  font-weight: 500;
+  letter-spacing: 0.02em;
 }
 
 .prose-content {
