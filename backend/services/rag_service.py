@@ -1,8 +1,9 @@
 import json
 import os
 import re
+import asyncio
 from typing import List, Dict, Any, AsyncGenerator
-from langchain_community.chat_models import ChatOllama
+from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.chat_message_histories.sql import SQLChatMessageHistory
@@ -15,7 +16,7 @@ from .evaluation_service import evaluation_service
 class ComplianceAgent:
     def __init__(self):
         self.llm = ChatOllama(
-            model="llama3.2", 
+            model="bazobehram/turkish-gemma-9b-t1", 
             temperature=0, 
             top_p=0.85,
             repeat_penalty=1.3,
@@ -51,25 +52,35 @@ class ComplianceAgent:
             r'\bsharinginin\b': 'paylaşımının',
             r'\bsharing\b': 'paylaşım',
             r'\bcontract\b': 'sözleşme',
+            r'\bexpertise\b': 'uzmanlık',
+            r'\bfinance\b': 'finans',
             r'\bisum\b': '',
         }
 
     def _clean_agent_output(self, text: str) -> str:
-        """ID'leri ve teknik etiketleri temizler, İngilizce sızıntıları Türkçeleştirir."""
-        # Sert Kelime Filtresi (Model sızıntılarını önlemek için)
-        pass # self.replacements kullanılacak
+        """Markdown başlıklarını, teknik etiketleri ve yasaklı sembolleri temizler."""
+        # 1. Sert Kelime Filtresi
         for pattern, replacement in self.replacements.items():
             text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
 
-        # Yasaklı teknik ibareler ve ID'ler
+        # 2. Yasaklı Teknik İbareler, ID'ler ve Düşünce Blokları
         patterns = [
+            r'<think>.*?</think>', 
             r'ID: \w+', r'Uyum Skoru: \d+', r'Kaynak:', 
             r'Bağlam:', r'İçerik:', r'Geçmiş:', r'Context:',
             r'Atıf:', r'\*\*', 
         ]
         for pattern in patterns:
-            text = re.sub(pattern, '', text)
+            text = re.sub(pattern, '', text, flags=re.DOTALL | re.IGNORECASE)
+
+        # 3. Hiyerarşi ve Dekorasyon Temizliği (###, ##, ---, ***, > temizliği)
+        # Markdown başlık işaretlerini kaldır (# karakterlerini sil)
+        text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
+        # Dekoratif çizgileri ve blok alıntılarını sil
+        text = re.sub(r'[\-\*]{3,}', '', text)
+        text = re.sub(r'^>\s*', '', text, flags=re.MULTILINE)
         
+        # 4. Gereksiz boşlukları temizle
         text = re.sub(r'\n{3,}', '\n\n', text)
         return text.strip()
 
@@ -119,18 +130,21 @@ class ComplianceAgent:
         # 3. Nihai Cevap (Sadeleştirilmiş ve Kesin Prompt)
         answer_prompt = ChatPromptTemplate.from_messages([
             ("system", """Sen Katılım Bankacılığı alanında uzman bir 'Uyum Denetçisi'sin.
-
-HUKUKİ VE DİLSEL KURALLAR:
-1. SADECE TÜRKÇE: Teknik terimler hariç sadece akıcı Türkçe kullan. Yabancı kelime uydurma.
-2. DÖKÜMAN SADAKATİ: Sadece 'Bağlam' içinde verilen bilgileri kullan. Kavramları (Örn: Sarf ve Mudaraba) birbirine karıştırma.
-3. SADELİK: Doğrudan cevabı ver. Teknik etiketler kullanma.
-4. RESMİ ÜSLUP: Kurumsal ve ciddi bir ton kullan.
-
-Bağlam:
-{context}
-
-Geçmiş:
-{history}"""),
+ 
+ HUKUKİ VE DİLSEL KURALLAR:
+- KRİTİK DİL KİLİDİ: Tüm cevabını SADECE akıcı ve doğal bir TÜRKÇE ile ver. Teknik terimler hariç kesinlikle İngilizce kullanma.
+- HİYERARŞİ: Başlıklar için asla ### veya ## gibi Markdown işaretleri kullanma. Başlıkları tamamen BÜYÜK HARF VE BOLD (Örn: **ZARARIN SORUMLULUĞU**) olarak yaz.
+- EMFAZ: Önemli kavramları metin içinde **bold** yaparak belirt.
+- SADELİK: ***, --- veya > gibi ayırıcı semboller kullanma.
+- ÜSLUP: "Özetle" veya "Sonuç olarak" gibi geçiş ifadelerinden kaçın. Doğrudan bilgiye odaklan.
+- DÖKÜMAN SADAKATİ: Sadece 'Bağlam' içindeki bilgileri kullan ve döküman ID'sini (Örn: [std_1]) cümle sonunda belirt.
+ 
+ Bağlam:
+ {context}
+ 
+ Geçmiş:
+ {history}
+ """),
             ("human", "{question}")
         ])
         
@@ -188,17 +202,19 @@ Geçmiş:
         # 2. Nihai Cevap (Sadeleştirilmiş Akış)
         answer_prompt = ChatPromptTemplate.from_messages([
             ("system", """Sen Katılım Bankacılığı Uyum Denetçisisin.
-
-KURALLAR:
-1. Sadece akıcı Türkçe kullan.
-2. Dokümanlardaki hükümleri (peşinlik, zarar vb.) hatasız aktar. Kripto ve Mudaraba konularını karıştırma.
-3. Teknik başlık kullanmadan doğrudan cevaba gir.
-
-Bağlam:
-{context}
-
-Geçmiş:
-{history}"""),
+ 
+ KURALLAR:
+ 1. KESİN TÜRKÇE KİLİDİ: Sadece akıcı Türkçe konuş.
+ 2. HİYERARŞİ: Asla ### kullanma. Başlıkları **BÜYÜK HARF VE BOLD** yaz.
+ 3. SADELİK: Dekoratif semboller (---, ***, >) kullanma.
+ 4. ÜSLUP: "Özetle" gibi ifadelerden kaçın, doğrudan cevap ver.
+ 
+ Bağlam:
+ {context}
+ 
+ Geçmiş:
+ {history}
+ """),
             ("human", "{question}")
         ])
         
@@ -206,6 +222,7 @@ Geçmiş:
         
         full_answer = ""
         seen_sentences = set()
+        is_thinking = False
         
         # Bozuk Geçmiş Koruması: Eğer son mesajlar devasa bir döngü içeriyorsa geçmişi yoksay
         history_messages = history.messages[-3:] if history.messages else []
@@ -217,12 +234,26 @@ Geçmiş:
             "history": history_messages if history_messages else "Geçmiş yok.",
             "question": text
         }):
+            full_answer += chunk
+            
+            # <think> bloğu kontrolü
+            if "<think>" in chunk or is_thinking:
+                if "<think>" in chunk:
+                    is_thinking = True
+                if "</think>" in chunk:
+                    is_thinking = False
+                    # </think> sonrası kısmı işle
+                    remaining = chunk.split("</think>")[-1]
+                    if not remaining:
+                        continue
+                    chunk = remaining
+                else:
+                    continue
+
             # Akış anında saptanan kelimeleri temizle
             clean_chunk = chunk
             for pattern, replacement in self.replacements.items():
                 clean_chunk = re.sub(pattern, replacement, clean_chunk, flags=re.IGNORECASE)
-            
-            full_answer += clean_chunk
             
             # Anti-Loop Guard: Cümle bazlı döngü tespiti
             if "." in clean_chunk:
@@ -236,15 +267,18 @@ Geçmiş:
             
             yield clean_chunk
 
-        # 3. Post-Processing & Validation
-        validation = await agent_tools.compliance_validator(full_answer, context)
-        eval_results = await evaluation_service.evaluate_response(text, full_answer, context)
+        # 3. Post-Processing & Validation (PARALEL ÇALIŞTIRMA)
+        # Metin bittiği an validator ve evaluation'ı aynı anda başlatıyoruz
+        validation_task = agent_tools.compliance_validator(full_answer, context)
+        evaluation_task = evaluation_service.evaluate_response(text, full_answer, context)
+        
+        validation, eval_results = await asyncio.gather(validation_task, evaluation_task)
 
-        # Geçmişe ekle
+        # 4. Geçmişe Ekle (Arka planda veya metadata öncesi hızlıca)
         history.add_user_message(text)
         history.add_ai_message(full_answer)
 
-        # Metadata'yı gönder
+        # 5. Metadata'yı gönder
         metadata = {
             "type": "metadata",
             "thought": thought,

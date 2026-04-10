@@ -5,7 +5,7 @@ from langchain_core.output_parsers import StrOutputParser
 
 class EvaluationService:
     def __init__(self):
-        self.llm = ChatOllama(model="llama3.2", temperature=0)
+        self.llm = ChatOllama(model="bazobehram/turkish-gemma-9b-t1", temperature=0)
 
     async def evaluate_response(self, question: str, answer: str, context: str) -> Dict[str, Any]:
         """RAGAS benzeri metriklerle cevabı değerlendirir."""

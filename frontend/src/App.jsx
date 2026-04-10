@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import ReactMarkdown from 'react-markdown'
 
 const APP_VERSION = "v3.0 ChatGPT Edition"
 
@@ -72,7 +73,8 @@ function App() {
         role: 'assistant', 
         content: '',
         sources: [],
-        evaluation: null
+        evaluation: null,
+        isAnalyzing: false
       }])
 
       let accumulatedContent = ""
@@ -83,6 +85,15 @@ function App() {
         
         const chunk = decoder.decode(value, { stream: true })
         
+        // Metadata gelmeden hemen önce metin bitmiş olabilir, analiz moduna geçiş testi
+        if (chunk === "" && accumulatedContent !== "") {
+           setMessages(prev => {
+             const newMsgs = [...prev]
+             newMsgs[newMsgs.length - 1].isAnalyzing = true
+             return newMsgs
+           })
+        }
+
         // Metadata kontrolü
         if (chunk.includes("[METADATA]")) {
           const parts = chunk.split("[METADATA]")
@@ -98,6 +109,7 @@ function App() {
               lastMsg.content = accumulatedContent.trim()
               lastMsg.sources = meta.source_urls
               lastMsg.responseTime = duration
+              lastMsg.isAnalyzing = false
               lastMsg.evaluation = {
                 hit_rate: meta.evaluation?.faithfulness || 0,
                 faithfulness: meta.evaluation?.relevance || 0,
@@ -260,8 +272,16 @@ function App() {
                     <div className="font-bold text-[10px] mb-2 opacity-30 uppercase tracking-[0.2em] leading-none">
                       {m.role === 'user' ? 'Siz' : 'FiCo Kaşif'}
                     </div>
-                    <div className="text-[15px] leading-[1.7] text-[#171717] font-normal">
-                      {m.content}
+                    <div className="text-[15px] leading-[1.7] text-[#171717] font-normal prose prose-slate max-w-none">
+                      <ReactMarkdown>{m.content}</ReactMarkdown>
+                      {m.isAnalyzing && (
+                        <div className="mt-4 flex items-center gap-2 text-brand-emerald animate-pulse font-bold text-xs">
+                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Uyum Analizi Yapılıyor...
+                        </div>
+                      )}
                     </div>
                     {m.evaluation && (
                       <div className="mt-4 flex items-center gap-4 py-2 px-3 bg-brand-cream/40 rounded-xl border border-slate-100/50 w-fit animate-fade-in shadow-sm">

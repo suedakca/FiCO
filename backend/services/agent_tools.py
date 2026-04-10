@@ -6,7 +6,7 @@ from langchain_core.output_parsers import StrOutputParser
 
 class AgentTools:
     def __init__(self):
-        self.llm = ChatOllama(model="llama3.2", temperature=0)
+        self.llm = ChatOllama(model="bazobehram/turkish-gemma-9b-t1", temperature=0)
 
     async def document_retriever(self, query: str) -> str:
         """Belgeleri tarar ve en alakalı metin parçalarını kaynak bilgileriyle döner."""
@@ -18,9 +18,8 @@ class AgentTools:
                 f"ID: {meta.get('id')}\n"
                 f"Kaynak: {meta.get('source')}\n"
                 f"İçerik: {res['content']}\n"
-                f"---"
             )
-        return "\n".join(formatted_results) if formatted_results else "İlgili bilgi bulunamadı."
+        return "\n\n".join(formatted_results) if formatted_results else "İlgili bilgi bulunamadı."
 
     async def compliance_validator(self, answer: str, context: str) -> Dict[str, Any]:
         """Üretilen cevabın kaynak metne (context) sadık olup olmadığını kontrol eder."""
@@ -46,7 +45,7 @@ class AgentTools:
         if not all_docs["documents"]:
             return f"{category} kategorisinde kayıtlı mevzuat bulunamadı."
             
-        aggregated = [f"### {category} Mevzuat Birleşimi ###"]
+        aggregated = [f"**{category.upper()} MEVZUAT BİRLEŞİMİ**"]
         for i, doc in enumerate(all_docs["documents"]):
             meta = all_docs["metadatas"][i]
             aggregated.append(f"Kaynak: {meta.get('source')}\nKural: {doc}\n")
