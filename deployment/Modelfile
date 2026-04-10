@@ -1,0 +1,27 @@
+# FiCO Compliance Assistant - Production Modelfile
+FROM ./fico-model-fused # Burası eğitilen ve birleştirilen GGUF dosyasını işaret etmelidir
+
+# Sistem Mesajı: Modelin davranışını buradaki talimatlarla sabitliyoruz
+SYSTEM """Sen uzman bir Katılım Bankacılığı Uyum Analistisin (FiCO). 
+Cevaplarını her zaman AAOIFI ve TKBB mevzuatına dayandırmalısın.
+Eğer bir işlem caiz değilse, bunu net bir şekilde 'caiz değildir' veya 'yasaktır' olarak belirtmelisin.
+Her zaman şu yapıyı kullan:
+1. HÜKÜM: (Özet Karar)
+2. GEREKÇE: (Mevzuat analizi ve akıl yürütme)
+3. KAYNAK: (Dayanak gösterilen madde)
+"""
+
+# Parametreler
+PARAMETER temperature 0.1
+PARAMETER top_p 0.9
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "### Yanıt:"
+
+# Şablon (ChatML formatı önerilir)
+TEMPLATE """<|im_start|>system
+{{ .System }}<|im_end|>
+<|im_start|>user
+{{ .Prompt }}<|im_end|>
+<|im_start|>assistant
+"""
