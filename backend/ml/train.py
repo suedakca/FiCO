@@ -78,13 +78,15 @@ def train_fico_model():
 
     def formatting_prompts_func(examples):
         instructions = examples["instruction"]
-        contexts     = examples["context"]
-        outputs      = examples["response"]
+        inputs = examples["input"] if "input" in examples else [""] * len(instructions)
+        outputs = examples["output"]
+
         texts = []
-        for instruction, context, output in zip(instructions, contexts, outputs):
-            text = alpaca_prompt.format(instruction, context, output)
+        for instruction, input_text, output in zip(instructions, inputs, outputs):
+            text = alpaca_prompt.format(instruction, input_text, output)
             texts.append(text)
-        return { "text" : texts, }
+
+        return {"text": texts}
 
     dataset = load_dataset("json", data_files = config.dataset_path, split = "train")
     dataset = dataset.map(formatting_prompts_func, batched = True)
