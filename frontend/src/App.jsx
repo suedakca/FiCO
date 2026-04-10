@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 
-const APP_VERSION = "v3.0 ChatGPT Edition"
+const APP_VERSION = "v4.0 ChatGPT Edition"
 
 const INITIAL_MESSAGE = { 
   role: 'assistant', 
@@ -19,8 +19,8 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [history, setHistory] = useState([])
-  const [showThought, setShowThought] = useState(false) // Analiz şeffaflığı kontrolü
-  const chatEndRef = useRef(null)
+  const [showThought, setShowThought] = useState(false)
+  const scrollRef = useRef(null)
   const isFetchingRef = useRef(false)
 
   const fetchHistory = async () => {
@@ -40,7 +40,12 @@ function App() {
   }, [])
 
   const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: "smooth"
+      })
+    }
   }
 
   useEffect(() => {
@@ -96,7 +101,7 @@ function App() {
         } : msg
       ))
 
-      fetchHistory() // Yan menüyü güncelle
+      fetchHistory()
     } catch (error) {
       console.error("API error", error)
       setMessages(prev => prev.map(msg => 
@@ -118,27 +123,10 @@ function App() {
   }
 
   const handleSelectHistory = (h) => {
-    if (!h.response) {
-      // Eğer cevap kaydedilmemişse sadece soruyu gönder (Fallback)
-      handleSend(h.query_text)
-      return
+    const q = h.query || h.query_text;
+    if (q) {
+      handleSend(q);
     }
-    
-    setMessages([
-      INITIAL_MESSAGE,
-      { role: 'user', content: h.query_text },
-      { 
-        role: 'assistant', 
-        content: h.response.answer_text,
-        sources: h.response.source_urls ? h.response.source_urls.split(',') : [],
-        evaluation: {
-          hit_rate: h.response.confidence_score, 
-          faithfulness: 0.9, 
-          citation_accuracy: 0.9
-        },
-        thought: h.response.thought // Geçmişten thought verisini de yükle
-      }
-    ])
   }
 
   const suggestionChips = [
@@ -149,267 +137,185 @@ function App() {
   ]
 
   return (
-    <div className="flex h-screen bg-white font-sans selection:bg-brand-emerald/10 text-[#0d0d0d]">
-      
-      {/* Sidebar (Corporate Style) */}
-      <aside className={`${sidebarOpen ? 'w-[280px]' : 'w-0'} transition-all duration-300 bg-brand-navy overflow-hidden flex flex-col z-20 shadow-2xl`}>
-        <div className="p-4 flex flex-col h-full">
+    <div className="layout-container font-sans text-brand-text">
+      {/* Refined Ambient Overlay */}
+      <div className="glow-overlay top-[-10%] left-[-10%]"></div>
+      <div className="glow-overlay bottom-[-10%] right-[-10%] animate-pulse [animation-duration:8s]"></div>
+
+      {/* Sidebar - Dusty Rose Professional */}
+      <aside className={`sidebar transition-all duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full absolute z-40 h-full'}`}>
+        <div className="p-5 flex flex-col h-full overflow-hidden">
+          <div className="flex items-center gap-2.5 mb-8 px-1">
+             <div className="w-8 h-8 rounded-lg bg-brand-primary flex items-center justify-center text-white text-[10px] font-black shadow-lg shadow-brand-primary/20">FK</div>
+             <div className="font-extrabold text-[15px] tracking-tight uppercase text-brand-primary">FiCO Advisor</div>
+          </div>
+
           <button 
             onClick={handleNewChat}
-            className="flex items-center gap-3 p-4 bg-white/5 border border-white/10 text-white/90 hover:bg-white/10 rounded-xl transition-all mb-6 group shadow-lg"
+            className="flex items-center gap-2.5 p-3.5 w-full bg-white border border-brand-border rounded-xl text-[12px] font-bold text-brand-text hover:bg-brand-bg transition-all mb-8 group shadow-sm"
           >
-            <div className="w-8 h-8 rounded-lg bg-brand-gold flex items-center justify-center text-white text-xs font-bold shadow-gold/20">FK</div>
-            <span className="font-semibold text-sm">Yeni Analiz</span>
-            <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-            </div>
+             <svg className="w-4 h-4 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" /></svg>
+             Yeni Sohbet Başlat
           </button>
 
-          <nav className="flex-1 space-y-2 overflow-y-auto px-1 scrollbar-hide">
-            <div className="text-white/30 text-[10px] font-bold uppercase tracking-[0.2em] px-3 py-4">DENETİM KAYITLARI</div>
+          <nav className="flex-1 space-y-1 overflow-y-auto pr-2 custom-scrollbar">
+            <div className="text-[9px] font-black text-brand-text-secondary uppercase tracking-[0.25em] px-2 py-4 mb-2">Arşiv</div>
             {history.length > 0 ? history.map((h, i) => (
               <button 
                 key={h.id || i} 
                 onClick={() => handleSelectHistory(h)}
-                className="w-full text-left p-3.5 rounded-xl text-white/70 text-[13px] hover:bg-white/5 hover:text-white border border-transparent hover:border-white/5 transition-all truncate animate-fade-in group font-medium"
+                className="w-full text-left px-3 py-2.5 rounded-xl text-[12px] text-brand-text hover:bg-white hover:shadow-sm transition-all truncate font-semibold border border-transparent"
               >
-                <span className="opacity-40 mr-2 font-mono text-[10px]">{String(i+1).padStart(2, '0')}</span>
-                {h.query_text}
+                {h.query || h.query_text}
               </button>
             )) : (
-              <div className="px-3 py-2 text-white/20 text-xs italic">Henüz denetim kaydı yok.</div>
+              <div className="px-2 py-2 text-brand-text-secondary/40 text-[11px] italic">Geçmiş bulunmamaktadır.</div>
             )}
           </nav>
 
-          <div className="mt-auto p-2 border-t border-white/5 pt-4 space-y-2">
-            <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/5 mb-4">
-              <div className="w-8 h-8 rounded-full bg-brand-gold/20 flex items-center justify-center text-brand-gold text-xs font-bold border border-brand-gold/30 italic">BA</div>
-              <div className="flex flex-col">
-                <span className="text-white text-[12px] font-bold">Banka Yetkilisi</span>
-                <span className="text-white/40 text-[10px]">Demo Hesabı</span>
-              </div>
-            </div>
+          <div className="mt-auto pt-6 border-t border-brand-border">
+             <div className="flex items-center gap-3 p-3 bg-white/50 rounded-xl border border-brand-border">
+                <div className="w-7 h-7 rounded-md bg-brand-primary/10 flex items-center justify-center text-brand-primary text-[9px] font-black">BA</div>
+                <div className="flex flex-col">
+                   <span className="text-brand-text text-[11px] font-bold">Banka Yetkilisi</span>
+                   <span className="text-brand-text-secondary text-[9px] font-bold uppercase tracking-wider">Corporate Access</span>
+                </div>
+             </div>
           </div>
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col relative overflow-hidden h-full">
-        
-        {/* Professional Header */}
-        <header className="h-[70px] border-bottom border-slate-200 bg-white/80 backdrop-blur-md flex items-center justify-between px-8 z-10 shadow-sm">
-          <div className="flex items-center gap-4">
+      {/* Main Chat Main Area */}
+      <main className="chat-main custom-scrollbar">
+        {/* Minimal Header */}
+        <header className="w-full h-14 flex items-center justify-between px-8 bg-brand-bg/90 backdrop-blur-md sticky top-0 z-30 border-b border-brand-border">
+          <div className="flex items-center gap-6">
             <button 
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-500"
+              className="p-1.5 hover:bg-white rounded-md transition-colors text-brand-text-secondary"
             >
-              <svg className={`w-5 h-5 transition-transform ${!sidebarOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
-            <div className="h-6 w-[1px] bg-slate-200 mx-2" />
-            <div className="flex flex-col">
-              <h1 className="text-[15px] font-bold text-brand-navy tracking-tight leading-tight">FiCO Compliance Hub</h1>
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Mevzuat Analiz & Denetim Sistemi</span>
+            <div className="flex items-center gap-2">
+               <span className="w-1.5 h-1.5 rounded-full bg-brand-primary" />
+               <h1 className="font-bold text-[14px] text-brand-text tracking-tight">FiCO Danışman</h1>
             </div>
           </div>
-          
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-brand-emerald/10 text-brand-emerald rounded-full text-[11px] font-bold">
-              <span className="w-2 h-2 rounded-full bg-brand-emerald animate-pulse" />
-              Sistem Aktif
-            </div>
-            <button className="p-2 text-slate-400 hover:text-slate-600 transition-colors">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-            </button>
+             <div className="px-3 py-1 bg-white text-brand-text-secondary text-[9px] font-black rounded-full border border-brand-border uppercase tracking-widest shadow-sm">Live Node</div>
           </div>
         </header>
 
-        {/* Chat Stream */}
-        <div className="flex-1 overflow-y-auto w-full flex flex-col items-center bg-brand-cream custom-scrollbar">
-          
-          {messages.length === 1 && (
-            <div className="flex-1 flex flex-col items-center justify-center max-w-3xl px-6 -mt-10 animate-fade-in w-full">
-              <div className="w-20 h-20 bg-brand-navy text-white rounded-[24px] flex items-center justify-center shadow-2xl mb-10 ring-8 ring-brand-navy/5 animate-bounce-subtle">
-                <span className="text-3xl font-bold tracking-tighter">FK</span>
+        {/* Vertical Scroll Area */}
+        <div ref={scrollRef} className="flex-1 w-full overflow-y-auto custom-scrollbar flex flex-col pt-6">
+          <div className="chat-content-limit px-8 pb-24 space-y-12">
+            
+            {messages.map((m, i) => (
+              <div key={i} className={`flex flex-col w-full animate-message-in`} style={{ animationDelay: `${i * 0.05}s` }}>
+                
+                <div className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                  
+                  {m.role === 'assistant' && (
+                    <div className="flex items-center gap-2 mb-3 ml-2">
+                       <div className="w-5 h-5 rounded bg-brand-primary flex items-center justify-center text-white text-[7px] font-black">FK</div>
+                       <span className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-secondary">FiCO Advisors</span>
+                    </div>
+                  )}
+
+                  <div className={m.role === 'user' ? 'message-user' : 'message-assistant'}>
+                    <div className="prose-content">
+                      {m.role === 'assistant' && !m.isAnalyzing && <span className="verdict-title inline-flex items-center gap-2">
+                         UYUMLULUK HÜKMÜ
+                      </span>}
+                      
+                      {m.content ? <ReactMarkdown>{m.content}</ReactMarkdown> : null}
+
+                      {m.isAnalyzing && (
+                        <div className="flex items-center gap-3 py-2">
+                           <div className="flex gap-1.5">
+                              <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse" />
+                              <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse [animation-delay:0.2s]" />
+                              <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse [animation-delay:0.4s]" />
+                           </div>
+                           <span className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-primary">Analiz Yürütülüyor...</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {m.role === 'assistant' && !m.isAnalyzing && m.sources && m.sources.length > 0 && (
+                      <div className="source-muted flex flex-wrap gap-x-4 gap-y-2">
+                         <div className="font-black text-brand-primary uppercase tracking-widest text-[10px]">Referanslar:</div>
+                         {m.sources.map((s, si) => (
+                           <div key={si} className="flex items-center gap-1.5 text-brand-text-secondary font-bold group cursor-pointer hover:text-brand-primary transition-colors">
+                              <span className="w-1 h-1 rounded-full bg-brand-border group-hover:bg-brand-primary" />
+                              {s}
+                           </div>
+                         ))}
+                      </div>
+                    )}
+
+                    {m.role === 'assistant' && !m.isAnalyzing && m.evaluation && (
+                      <div className="mt-5 flex gap-6 border-t border-brand-border pt-4">
+                         <div className="flex flex-col gap-0.5">
+                            <div className="text-[8px] font-black text-brand-text-secondary uppercase tracking-widest">Güven Endeksi</div>
+                            <div className="text-[11px] font-black text-brand-primary">%{Math.round(m.evaluation.hit_rate * 100)}</div>
+                         </div>
+                         <div className="flex flex-col gap-0.5">
+                            <div className="text-[8px] font-black text-brand-text-secondary uppercase tracking-widest">Hız</div>
+                            <div className="text-[11px] font-black text-brand-accent">{m.responseTime || "0.8"}s</div>
+                         </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-              <h2 className="text-4xl font-display font-black text-center mb-4 tracking-tighter text-brand-navy">Analiz Merkezi'ne Hoş Geldiniz</h2>
-              <p className="text-slate-400 text-center mb-12 max-w-md font-medium">Katılım bankacılığı mevzuat uyum süreçlerinizi yapay zeka ile denetleyin.</p>
-              
-              <div className="grid grid-cols-2 gap-6 w-full max-w-2xl">
+            ))}
+
+            {messages.length === 1 && (
+              <div className="grid grid-cols-2 gap-4 pt-16 animate-fade-in max-w-2xl mx-auto">
                 {suggestionChips.map((chip, i) => (
                   <button 
                     key={i} 
                     onClick={() => handleSend(chip.q)}
-                    className="p-6 text-left bg-white border border-slate-200 rounded-[28px] hover:border-brand-gold/30 hover:bg-brand-gold/[0.02] transition-all text-sm group relative shadow-sm hover:shadow-xl hover:shadow-brand-gold/5 active:scale-[0.98] animate-slide-up"
-                    style={{ animationDelay: `${i * 100}ms` }}
+                    className="p-5 text-left bg-white border border-brand-border rounded-2xl hover:border-brand-primary hover:shadow-lg transition-all group"
                   >
-                    <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-xl mb-4 group-hover:bg-brand-gold/10 transition-colors">{chip.icon}</div>
-                    <p className="text-slate-500 group-hover:text-brand-navy font-bold transition-colors mb-1">{chip.q}</p>
-                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Hemen Analiz Et</span>
+                    <div className="text-2xl mb-3 group-hover:scale-110 transition-transform origin-left">{chip.icon}</div>
+                    <div className="text-[13px] font-bold text-brand-text">{chip.q}</div>
                   </button>
                 ))}
               </div>
-            </div>
-          )}
-
-          {messages.length > 1 && (
-            <div className="w-full max-w-3xl px-6 pt-12 pb-48 space-y-12">
-              {messages.map((m, i) => (
-                <div key={i} className="flex gap-6 group animate-fade-in">
-                  <div className={`w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center text-[11px] font-bold shadow-sm transition-transform group-hover:scale-105 ${
-                    m.role === 'user' ? 'bg-slate-100 text-slate-500 border border-slate-200' : 'bg-brand-emerald text-white shadow-brand-emerald/20'
-                  }`}>
-                    {m.role === 'user' ? 'S' : 'FK'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-[10px] mb-2 opacity-30 uppercase tracking-[0.2em] leading-none">
-                      {m.role === 'user' ? 'Siz' : 'FiCo Kaşif'}
-                    </div>
-                    <div className="text-[15px] leading-[1.8] text-brand-navy font-normal prose prose-slate max-w-none">
-                      {m.thought && (
-                        <div className="mb-6 bg-slate-100/50 border border-slate-200/60 rounded-2xl overflow-hidden animate-slide-up">
-                          <button 
-                            onClick={() => setShowThought(!showThought)}
-                            className="w-full flex items-center justify-between p-4 hover:bg-slate-200/30 transition-colors uppercase tracking-[0.15em] text-[10px] font-black text-slate-500"
-                          >
-                            <span className="flex items-center gap-2">
-                              <svg className="w-3.5 h-3.5 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.364-5.636l-.707-.707m1.414 14.142l-.707-.707M4.422 4.422l.707.707m4.347 4.347l1.32-1.319a3.848 3.848 0 015.441 5.441l-1.32 1.32M9 12h.01M9 16h.01" /></svg>
-                              Analiz Mantığı (Thought Process)
-                            </span>
-                            <svg className={`w-3.5 h-3.5 transition-transform ${showThought ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
-                          </button>
-                          {showThought && (
-                            <div className="p-4 pt-0 text-[13px] text-slate-500 italic font-medium leading-relaxed border-t border-slate-200/40 mt-2">
-                              {m.thought}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      
-                      <ReactMarkdown>{m.content}</ReactMarkdown>
-                      {m.escalated && (
-                        <div className="mt-6 flex items-center gap-3 text-red-600 font-bold text-[12px] uppercase tracking-widest bg-red-50 p-4 rounded-xl border border-red-200">
-                          ⚠️ Danışma Kuruluna Eskalasyonu Gerekiyor (Risk / Belirsizlik tespit edildi)
-                        </div>
-                      )}
-                      {m.queryType && (
-                         <div className="mt-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest">Sorgu Tipi: {m.queryType}</div>
-                      )}
-                      {m.isAnalyzing && (
-                        <div className="mt-6 flex items-center gap-3 text-brand-emerald animate-pulse font-bold text-[11px] uppercase tracking-widest bg-brand-emerald/5 p-4 rounded-2xl border border-brand-emerald/10">
-                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                          </svg>
-                          Derin Mevzuat Analizi Yapılıyor...
-                        </div>
-                      )}
-                    </div>
-                    {m.evaluation && (
-                      <div className="mt-6 flex items-center gap-6 py-4 px-6 bg-white rounded-2xl border border-slate-200 shadow-sm w-fit animate-fade-in group/eval">
-                        <div className="flex items-center gap-3 pr-6 border-r border-slate-100">
-                          <div className="w-8 h-8 rounded-lg bg-brand-gold/10 flex items-center justify-center text-brand-gold">
-                             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"/></svg> 
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight">Uyum Rasyosu</span>
-                            <span className="text-[14px] font-black text-brand-navy">PROFESYONEL</span>
-                          </div>
-                        </div>
-                        <div className="flex gap-8 pr-6 border-r border-slate-100">
-                          <div className="flex flex-col">
-                            <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">Erişim</span>
-                            <div className="flex items-end gap-1">
-                              <span className={`text-[18px] font-black leading-none ${m.evaluation.hit_rate > 0.8 ? 'text-brand-emerald' : 'text-brand-amber'}`}>
-                                %{Math.round(m.evaluation.hit_rate * 100)}
-                              </span>
-                              <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden mb-1.5">
-                                <div className="h-full bg-brand-emerald transition-all duration-1000" style={{ width: `${Math.round(m.evaluation.hit_rate * 100)}%` }} />
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">Sadakat</span>
-                            <div className="flex items-end gap-1">
-                              <span className={`text-[18px] font-black leading-none ${m.evaluation.faithfulness > 0.8 ? 'text-brand-emerald' : 'text-brand-amber'}`}>
-                                %{Math.round(m.evaluation.faithfulness * 100)}
-                              </span>
-                              <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden mb-1.5">
-                                <div className="h-full bg-brand-emerald transition-all duration-1000" style={{ width: `${Math.round(m.evaluation.faithfulness * 100)}%` }} />
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        {m.responseTime && (
-                          <div className="flex items-center gap-2">
-                             <div className="w-2 h-2 rounded-full bg-slate-200" />
-                             <span className="text-[11px] font-bold text-slate-400">{m.responseTime}s Analiz Süresi</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {m.sources && (
-                      <div className="mt-10 pt-6 border-t border-slate-100 flex flex-col gap-4">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Referans Kaynaklar</span>
-                        <div className="flex flex-wrap gap-3">
-                          {m.sources.map((s, si) => (
-                            <div key={si} className="group/src flex items-center gap-3 px-4 py-2.5 bg-white border border-slate-200 rounded-2xl hover:border-brand-gold/30 hover:bg-brand-gold/[0.02] transition-all cursor-pointer shadow-sm hover:shadow-lg">
-                              <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-brand-gold group-hover/src:bg-brand-gold/10 transition-colors">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                              </div>
-                              <div className="flex flex-col">
-                                <span className="text-[13px] font-bold text-brand-navy leading-none mb-1">{s}</span>
-                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">İlgili Madde</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {isLoading && (
-                <div className="flex gap-6 animate-pulse">
-                  <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200" />
-                  <div className="flex-1 space-y-3 mt-2">
-                    <div className="h-3 bg-slate-50 rounded-full w-4/5" />
-                    <div className="h-3 bg-slate-50 rounded-full w-2/3" />
-                  </div>
-                </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-          )}
-        </div>
-
-        {/* Floating Input (ChatGPT Style) */}
-        <div className="absolute bottom-0 left-0 right-0 p-8 pt-0 flex justify-center pointer-events-none">
-          <div className="max-w-3xl w-full flex flex-col items-center gap-4">
-            <div className="w-full bg-[#f4f4f4] rounded-[28px] p-2 flex items-center pointer-events-auto border border-black/5 focus-within:ring-1 focus-within:ring-black/10 transition-all">
-              <input 
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="Mesajınızı yazın..."
-                className="flex-1 bg-transparent border-none focus:ring-0 px-4 py-3 text-base outline-none text-[#0d0d0d] placeholder:text-black/40"
-              />
-              <button 
-                onClick={() => handleSend()}
-                disabled={isLoading || !input.trim()}
-                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-                  input.trim() ? 'bg-black text-white hover:opacity-80' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                }`}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
-              </button>
-            </div>
-            <p className="text-[10px] text-slate-400 font-medium">
-              FiCo Kaşif de hata yapabilir. Önemli bilgileri kontrol edin.
-            </p>
+            )}
           </div>
         </div>
 
-      </div>
+        {/* Sticky Input Dock */}
+        <div className="input-area-sticky">
+           <div className="chat-content-limit px-8">
+              <div className="input-pill bg-white shadow-2xl shadow-slate-200">
+                <input 
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                  placeholder="Ürün yapısı veya mevzuat hakkında analiz başlatın..."
+                  className="flex-1 bg-transparent border-none focus:ring-0 outline-none text-[15px] py-3.5 text-brand-text placeholder:text-brand-text-secondary/50 font-medium"
+                />
+                <button 
+                  onClick={() => handleSend()}
+                  disabled={isFetchingRef.current || !input.trim()}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                    input.trim() ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20 hover:scale-105' : 'bg-brand-bg text-brand-text-secondary/20'
+                  }`}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 12h14M12 5l7 7-7 7" /></svg>
+                </button>
+              </div>
+              <div className="text-center mt-4 text-[9px] text-brand-text-secondary font-bold uppercase tracking-[0.2em] opacity-50">
+                FiCO v4.2 • Professional Identity • Trusted AI
+              </div>
+           </div>
+        </div>
+      </main>
     </div>
   )
 }

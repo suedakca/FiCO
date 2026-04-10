@@ -103,6 +103,33 @@ async def submit_feedback(request: FeedbackRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/v1/query")
+async def get_history(user_id: str = "demo_user"):
+    """Frontend history bölümü için son aramaları döndürür"""
+    try:
+        import os
+        log_file = "./backend/data/audit.jsonl"
+        history = []
+        seen = set()
+        if os.path.exists(log_file):
+            with open(log_file, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+                # Son sorgulardan geriye doğru oku
+                for line in reversed(lines):
+                    if not line.strip(): continue
+                    try:
+                        record = json.loads(line)
+                        q = record.get("query", "")
+                        norm_q = record.get("normalized_query", q.lower())
+                        if q and norm_q not in seen:
+                            seen.add(norm_q)
+                            history.append({"id": record.get("cache_key", str(len(history))), "query": q, "timestamp": record.get("timestamp")})
+                    except Exception as json_e:
+                        pass
+        return history[:20] # Son 20 eşsiz aramayı döndür
+    except Exception as e:
+        return []
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
