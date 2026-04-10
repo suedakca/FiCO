@@ -4,22 +4,25 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from .inference import inference_engine
+from backend.core.feedback import feedback_loop
 
-# 1. API Uygulaması (v3.1)
+# 1. API Uygulaması (v3.2)
 app = FastAPI(
-    title="FiCO v3.1 (Governed Decision System)",
-    description="Kurumsal Karar Motoru - Politika ve Yönetişim Denetimli",
-    version="3.1.0"
+    title="FiCO v3.2 (Trusted AI System)",
+    description="Deterministik, İzlenebilir ve Güvenilir Kurumsal Karar Motoru",
+    version="3.2.0"
 )
 
 # 2. Veri Modelleri
 class QuestionRequest(BaseModel):
     question: str
-    mode: Optional[str] = "strict"
+    mode: Optional[str] = "production"
 
-class DecisionTrace(BaseModel):
-    priority_used: bool
-    recency_used: bool
+class FeedbackRequest(BaseModel):
+    query: str
+    answer: str
+    feedback: str # "correct" | "incorrect"
+    comment: Optional[str] = None
 
 class AnswerResponse(BaseModel):
     answer: str
@@ -28,11 +31,13 @@ class AnswerResponse(BaseModel):
     query_type: str
     mode: str
     escalated: bool
-    decision_trace: DecisionTrace
+    policy_version: str
+    cache_hit: bool
+    decision_trace: Dict[str, Any]
 
-# 3. Gelişmiş Denetim Günlüğü (v3.1 Audit Trace)
-def log_audit_v31(data: Dict[str, Any]):
-    """Karar süreçlerini detaylı olarak denetim için kayıt altına alır."""
+# 3. Replay-Ready Audit Trace (v3.2)
+def log_audit_v32(data: Dict[str, Any]):
+    """Sorgunun tam olarak tekrar oynatılabilmesi için tüm parametreleri kaydeder."""
     log_file = "./backend/data/audit.jsonl"
     with open(log_file, "a", encoding="utf-8") as f:
         log_entry = {
@@ -44,24 +49,24 @@ def log_audit_v31(data: Dict[str, Any]):
 # 4. Endpoints
 @app.get("/")
 def health_check():
-    return {"status": "online", "system": "FiCO v3.1 Governed Decision System"}
+    return {"status": "online", "system": "FiCO v3.2 Trusted AI"}
 
 @app.post("/ask", response_model=AnswerResponse)
 async def ask_question(request: QuestionRequest):
-    """v3.1 - Yönetilen Karar Motoru (Governed Decision Engine)."""
+    """v3.2 - Güvenilir Karar Motoru (Deterministic & Traceable)."""
     try:
         # Karar alma sürecini başlat
         result = inference_engine.generate_response(request.question, mode=request.mode)
         
-        # Detaylı Denetim İzi (Audit Trace)
-        log_audit_v31({
+        # v3.2 Audit Trace
+        log_audit_v32({
             "query": request.question,
-            "query_type": result.get("query_type"),
-            "mode": result.get("mode"),
-            "escalated": result.get("escalated"),
+            "normalized_query": result.get("normalized_query"),
+            "cache_key": result.get("cache_key"),
+            "model_params": result.get("model_params"),
+            "policy_versions_used": result.get("policy_versions_used", []),
             "confidence": result.get("confidence"),
-            "priority_applied": result.get("decision_trace", {}).get("priority_used"),
-            "recency_adjusted": result.get("decision_trace", {}).get("recency_used"),
+            "escalated": result.get("escalated"),
             "final_answer": result.get("answer")
         })
         
@@ -70,10 +75,21 @@ async def ask_question(request: QuestionRequest):
             "sources": result.get("sources", []),
             "confidence": result.get("confidence", 0.0),
             "query_type": result.get("query_type", "unknown"),
-            "mode": result.get("mode", "strict"),
+            "mode": result.get("mode", "production"),
             "escalated": result.get("escalated", False),
-            "decision_trace": result.get("decision_trace", {"priority_used": False, "recency_used": False})
+            "policy_version": result.get("policy_versions_used", ["v1.0"])[0],
+            "cache_hit": result.get("cache_hit", False),
+            "decision_trace": result.get("decision_trace", {})
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/feedback")
+async def submit_feedback(request: FeedbackRequest):
+    """Kullanıcı geri bildirimlerini toplar ve öz-iyileştirme için kaydeder."""
+    try:
+        feedback_loop.record_feedback(request.dict())
+        return {"status": "success", "message": "Geri bildiriminiz kaydedilmiştir."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
