@@ -1,17 +1,20 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand-emerald: #064e3b;
+  --color-brand-navy: #0f172a;
+  --color-brand-emerald: #059669;
   --color-brand-teal: #0d9488;
-  --color-brand-gold: #c5a059;
-  --color-brand-cream: #fafaf9;
-  --color-brand-slate: #171717;
+  --color-brand-gold: #b45309;
+  --color-brand-amber: #f59e0b;
+  --color-brand-cream: #f8fafc;
+  --color-brand-slate: #1e293b;
   
   --font-display: "Outfit", "Inter", sans-serif;
   --font-sans: "Inter", sans-serif;
 
   --animate-fade-in: fade-in 0.5s ease-out;
   --animate-slide-up: slide-up 0.4s ease-out;
+  --animate-bounce-subtle: bounce-subtle 2s infinite;
 
   @keyframes fade-in {
     from { opacity: 0; }
@@ -20,6 +23,10 @@
   @keyframes slide-up {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes bounce-subtle {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
   }
 }
 
