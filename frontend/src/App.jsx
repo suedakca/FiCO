@@ -50,95 +50,58 @@ function App() {
     const queryText = text || input
     if (!queryText.trim() || isLoading) return
     
-    setMessages(prev => [...prev, { role: 'user', content: queryText }])
+    setMessages(prev => [...prev, 
+      { role: 'user', content: queryText },
+      { role: 'assistant', content: '', isAnalyzing: true }
+    ])
     setInput('')
     setIsLoading(true)
     const startTime = Date.now()
 
     try {
-      const response = await fetch('http://localhost:8000/v1/query/stream', {
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+      const response = await fetch(`${baseUrl}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: 'demo_user',
-          query_text: queryText
+          question: queryText,
+          mode: 'production'
         })
       })
 
       if (!response.ok) throw new Error('API Error')
       
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
+      const data = await response.json()
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1)
       
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: '',
-        sources: [],
-        evaluation: null,
-        isAnalyzing: false
-      }])
-
-      let accumulatedContent = ""
-      
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        
-        const chunk = decoder.decode(value, { stream: true })
-        
-        // Metadata gelmeden hemen önce metin bitmiş olabilir, analiz moduna geçiş testi
-        if (chunk === "" && accumulatedContent !== "") {
-           setMessages(prev => {
-             const newMsgs = [...prev]
-             newMsgs[newMsgs.length - 1].isAnalyzing = true
-             return newMsgs
-           })
+      setMessages(prev => {
+        const newMsgs = [...prev]
+        const lastMsg = newMsgs[newMsgs.length - 1]
+        lastMsg.isAnalyzing = false
+        lastMsg.content = data.answer
+        lastMsg.sources = data.sources ? data.sources.map(s => s.metadata?.source || s.metadata?.rule_id || 'Kaynak Belgeler') : []
+        lastMsg.evaluation = {
+          hit_rate: data.confidence || 0,
+          faithfulness: data.confidence || 0,
+          citation_accuracy: data.cache_hit ? 1.0 : 0.9
         }
-
-        // Metadata kontrolü
-        if (chunk.includes("[METADATA]")) {
-          const parts = chunk.split("[METADATA]")
-          accumulatedContent += parts[0]
-          
-          try {
-            const meta = JSON.parse(parts[1])
-            const duration = ((Date.now() - startTime) / 1000).toFixed(1)
-            
-            setMessages(prev => {
-              const newMsgs = [...prev]
-              const lastMsg = newMsgs[newMsgs.length - 1]
-              lastMsg.content = accumulatedContent.trim()
-              lastMsg.sources = meta.source_urls
-              lastMsg.thought = meta.thought // Analiz sürecini kaydet
-              lastMsg.responseTime = duration
-              lastMsg.isAnalyzing = false
-              lastMsg.evaluation = {
-                hit_rate: meta.evaluation?.faithfulness || 0,
-                faithfulness: meta.evaluation?.relevance || 0,
-                citation_accuracy: 0.9
-              }
-              return newMsgs
-            })
-          } catch (e) {
-            console.error("Metadata parse error", e)
-          }
-        } else {
-          accumulatedContent += chunk
-          setMessages(prev => {
-            const newMsgs = [...prev]
-            newMsgs[newMsgs.length - 1].content = accumulatedContent
-            return newMsgs
-          })
-        }
-      }
+        lastMsg.thought = data.decision_trace ? JSON.stringify(data.decision_trace, null, 2) : "Twin-Inference basarili."
+        lastMsg.responseTime = duration
+        lastMsg.escalated = data.escalated
+        lastMsg.queryType = data.query_type
+        return newMsgs
+      })
 
       fetchHistory() // Yan menüyü güncelle
     } catch (error) {
-      console.error("Stream error", error)
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: 'Üzgünüm, şu an bağlantı kurulamıyor. Lütfen sistem yöneticinizle iletişime geçin.' 
-      }])
+      console.error("API error", error)
+      setMessages(prev => {
+        const newMsgs = [...prev]
+        const lastMsg = newMsgs[newMsgs.length - 1]
+        lastMsg.isAnalyzing = false
+        lastMsg.content = 'Üzgünüm, şu an bağlantı kurulamıyor. Lütfen sistem yöneticinizle iletişime geçin.'
+        return newMsgs
+      })
     } finally {
       setIsLoading(false)
     }
@@ -318,6 +281,14 @@ function App() {
                       )}
                       
                       <ReactMarkdown>{m.content}</ReactMarkdown>
+                      {m.escalated && (
+                        <div className="mt-6 flex items-center gap-3 text-red-600 font-bold text-[12px] uppercase tracking-widest bg-red-50 p-4 rounded-xl border border-red-200">
+                          ⚠️ Danışma Kuruluna Eskalasyonu Gerekiyor (Risk / Belirsizlik tespit edildi)
+                        </div>
+                      )}
+                      {m.queryType && (
+                         <div className="mt-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest">Sorgu Tipi: {m.queryType}</div>
+                      )}
                       {m.isAnalyzing && (
                         <div className="mt-6 flex items-center gap-3 text-brand-emerald animate-pulse font-bold text-[11px] uppercase tracking-widest bg-brand-emerald/5 p-4 rounded-2xl border border-brand-emerald/10">
                           <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">

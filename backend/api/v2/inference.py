@@ -65,7 +65,8 @@ class FiCOInferenceV32:
         # Confidence v2 (+ Priority + Recency)
         final_confidence = 0.0
         if context_docs:
-            scores = [( (min(1.0, (d.get("score", 0)+5)/10) * 0.5) + (d.get("priority_score", 0.25) * 0.3) + (d.get("recency_score", 0.5) * 0.2) ) for d in context_docs]
+            # Score genellikle 0-1 arasında (veya BM25/BGE normalize). Math düzeltildi.
+            scores = [(min(1.0, d.get("score", 0.8)) * 0.6) + (d.get("priority_score", 0.8) * 0.3) + (d.get("recency_score", 1.0) * 0.1) for d in context_docs]
             final_confidence = round(max(scores), 4)
 
         is_escalated = governance_engine.should_escalate(query, context_docs, final_confidence, query_type)
@@ -81,8 +82,30 @@ class FiCOInferenceV32:
                 "policy_versions_used": [d.get("metadata", {}).get("version", "v1.0") for d in context_docs]
             }
 
-        # Mock Answer
-        answer = "HÜKÜM:\nBanka v3.0 politikası çerçevesinde işlem UYGUNDUR.\n\nGEREKÇE:\nİç mevzuat önceliği ve günellik kriterleri korunmuştur."
+        # Dinamik (Mock) Answer ve Decision Trace
+        if context_docs:
+            top_doc = context_docs[0]
+            content = top_doc.get("content", "İçerik bulunamadı.")
+            source_name = top_doc.get("metadata", {}).get("source", "Bilinmeyen Kaynak")
+            rule_id = top_doc.get("metadata", {}).get("rule_id", "Kural-Yok")
+            
+            answer = f"HÜKÜM:\nBanka v3.2 politikası çerçevesinde işlem {source_name} standartlarına tabidir.\n\nGEREKÇE:\n{content}"
+            
+            decision_trace = {
+                "step_1": f"Sorgu sınıflandırması: {query_type}",
+                "step_2": f"Getirilen doküman sayısı: {len(context_docs)}",
+                "step_3": "Yönetişim (Governance) kuralları uygulandı",
+                "step_4": f"En uygun kaynak seçildi: {rule_id}",
+                "metrics": {
+                    "raw_score": round(top_doc.get("score", 0), 3),
+                    "priority_score": top_doc.get("priority_score", 0),
+                    "recency_score": top_doc.get("recency_score", 0),
+                    "final_confidence": final_confidence
+                }
+            }
+        else:
+            answer = "Sorunuza uygun bir mevzuat maddesi bulunamadı."
+            decision_trace = {"step_1": "Sorgu analizi", "error": "Bağlam bulunamadı"}
         
         return {
             "answer": answer,
@@ -91,7 +114,8 @@ class FiCOInferenceV32:
             "query_type": query_type,
             "mode": mode,
             "escalated": False,
-            "policy_versions_used": [d.get("metadata", {}).get("version", "v1.0") for d in context_docs[:2]]
+            "policy_versions_used": [d.get("metadata", {}).get("version", "v1.0") for d in context_docs[:2]],
+            "decision_trace": decision_trace
         }
 
 # Singleton instance

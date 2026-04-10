@@ -1,6 +1,7 @@
 import json
 import time
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from .inference import inference_engine
@@ -11,6 +12,20 @@ app = FastAPI(
     title="FiCO v3.2 (Trusted AI System)",
     description="Deterministik, İzlenebilir ve Güvenilir Kurumsal Karar Motoru",
     version="3.2.0"
+)
+
+# 1.1 CORS Yapılandırması
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # 2. Veri Modelleri
