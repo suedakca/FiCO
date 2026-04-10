@@ -1,90 +1,78 @@
 from typing import List, Dict, Any
 import numpy as np
-from backend.oracle.rag import retrieve_context, rag_engine
+from backend.oracle.rag import retrieve_context
 from backend.oracle.classifier import query_classifier
+from backend.oracle.governance import governance_engine
 
-class FiCOInferenceV3:
-    """FiCO v3.0 - Enterprise Explainable AI Inference Motoru."""
+class FiCOInferenceV31:
+    """FiCO v3.1 - Governed Decision System Inference Motoru."""
     
     def __init__(self, threshold: float = 0.7):
         self.threshold = threshold
         self.prompts = {
-            "compliance_decision": "TALİMAT: Kesin ve kuralcı bir ton kullan. Sadece dökümanlardaki hükümlere odaklan. Spekülasyon yapma.",
-            "comparison": "TALİMAT: Kurallar arasındaki benzerlik ve farkları madde madde açıkla. Mukayeseli bir analiz sun.",
-            "edge_case": "TALİMAT: İstisnai durumları ve koşulları (eğer, ise) vurgulayarak analiz et. Operasyonel riskleri belirt.",
-            "definition": "TALİMAT: Terimin mevzuat sözlüğündeki karşılığını ve kapsamını açıkla.",
-            "general_inquiry": "TALİMAT: Profesyonel bir üslupla genel mevzuat bilgilendirmesi yap."
+            "strict": "MOD: STRICT (KESİN). Spekülasyon yapma. Sadece dökümanlardaki net hükümlere odaklan. Belirsizlik varsa eskalasyon öner.",
+            "advisory": "MOD: ADVISORY (TAVSİYE). Kavramsal açıklamalar yapabilirsin. Bağlamsal muhakeme sun ve tavsiyelerde bulun.",
+            "compliance_decision": "GÖREV: Kritik Uyum Kararı. Kurallar arası hiyerarşiye sadık kal.",
+            "general": "GÖREV: Genel Bilgilendirme."
         }
 
-    def generate_response(self, question: str) -> Dict[str, Any]:
-        """v3.0 Akışı: Classify -> Retrieve -> Reason -> Map Evidence."""
+    def generate_response(self, question: str, mode: str = "strict") -> Dict[str, Any]:
+        """v3.1 Akışı: Classify -> Retrieve (Governed) -> Score -> Escalate -> Respond."""
         
         # 1. Sorgu Sınıflandırma
         query_type = query_classifier.classify(question)
         
-        # 2. Gelişmiş Arama (Reranked & Deduplicated)
+        # 2. Yönetişim Destekli Arama (Reranked + Priority Filtered)
         context_docs = retrieve_context(question)
         
-        # 3. Confidence Filtering
-        filtered_context = [doc for doc in context_docs if doc.get("score", 0) >= self.threshold]
+        # 3. Gelişmiş Karar Skorlaması (Confidence v2)
+        # Confidence = (sim * 0.5) + (priority * 0.3) + (recency * 0.2)
+        final_confidence = 0.0
+        decision_trace = {"priority_used": True, "recency_used": True}
         
-        # 4. Dinamik Güven Skoru (max_sim * coverage)
-        confidence = 0.0
-        if filtered_context:
-            max_sim = max(d["score"] for d in filtered_context)
-            coverage_factor = min(1.0, len(filtered_context) / 3.0) # 3 döküman tam kapsam sayılır
-            confidence = round(max_sim * coverage_factor, 4)
+        if context_docs:
+            scores = []
+            for doc in context_docs:
+                # rerank_score logit olabilir, 0-1 aralığına normalize edelim (basitçe 0.8 varsayalım)
+                # Gerçekte CrossEncoder çıktıları [-10, 10] arası olabilir, burada 0-1 varsayıyoruz.
+                sim = min(1.0, (doc.get("score", 0) + 5) / 10) if doc.get("score", 0) > 0 else 0.5
+                priority = doc.get("priority_score", 0.25)
+                recency = doc.get("recency_score", 0.5)
+                
+                doc_conf = (sim * 0.5) + (priority * 0.3) + (recency * 0.2)
+                scores.append(doc_conf)
+            final_confidence = round(max(scores), 4) if scores else 0.0
 
-        # 5. Reddetme Mantığı
-        if not filtered_context:
+        # 4. İnsan Eskalasyonu Mantığı (Escalation)
+        is_escalated = governance_engine.should_escalate(question, context_docs, final_confidence, query_type)
+        
+        if is_escalated:
             return {
-                "answer": "Bu konuda mevcut veri setinde açık bir hüküm bulunamamıştır.",
-                "sources": [],
-                "confidence": 0.0,
+                "answer": "This matter should be escalated to the Sharia Advisory Board for expert review. (Mevcut verilerle kesin bir hükme varılamamış veya yüksek riskli bir çelişki tespit edilmiştir.)",
+                "sources": context_docs,
+                "confidence": final_confidence,
                 "query_type": query_type,
-                "evidence": []
+                "mode": mode,
+                "escalated": True,
+                "decision_trace": decision_trace
             }
 
-        # 6. Dinamik Prompt Seçimi
-        specialized_instruction = self.prompts.get(query_type, self.prompts["general_inquiry"])
+        # 5. Dinamik Prompt ve Yanıt Oluşturma
+        mode_instruction = self.prompts.get(mode, self.prompts["strict"])
+        type_instruction = self.prompts.get(query_type, self.prompts["general"])
         
-        # 7. Bağlam Hazırlığı
-        context_text = ""
-        for i, doc in enumerate(filtered_context):
-            context_text += f"[KAYNAK {i+1}]: {doc['content']} (Referans: {doc['metadata'].get('exact_citation','')})\n\n"
-
-        # 8. Mock Answer (Gerçekte LLM tarafından üretilecek)
-        answer = "HÜKÜM:\nİlgili katılım bankacılığı mevzuatı uyarınca işlem caizdir.\n\nGEREKÇE:\nİşlemde risk paylaşımı yapıldığı görülmektedir."
-        
-        # 9. Kanıt Eşleme (Evidence Mapping)
-        evidence = self._map_evidence(answer, filtered_context)
+        # 6. Mock Response Logic (v3.1 Kurumsal Karar formatı)
+        answer = "HÜKÜM:\nBanka politikaları ve mevzuat önceliği çerçevesinde işlem UYGUNDUR.\n\nGEREKÇE:\nİç politikalar (Priority 4) AAOIFI kurallarına nazaran daha güncel (2025) kriterler sunmaktadır."
 
         return {
             "answer": answer,
-            "sources": filtered_context,
-            "confidence": confidence,
+            "sources": context_docs[:2], # En iyi 2 kaynak
+            "confidence": final_confidence,
             "query_type": query_type,
-            "evidence": evidence
+            "mode": mode,
+            "escalated": False,
+            "decision_trace": decision_trace
         }
 
-    def _map_evidence(self, answer: str, context: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Cevaptaki iddiaları dökümanlarla eşleştirir (Basit semantik eşleme)."""
-        evidence_list = []
-        sentences = answer.split(".")
-        
-        for sent in sentences:
-            if len(sent.strip()) < 10: continue
-            
-            # Her cümle için en yakın dökümanı bul (Simüle ediliyor)
-            # v3.0'da burada cümle seviyesinde embedding karşılaştırması yapılır.
-            best_match = context[0] 
-            evidence_list.append({
-                "rule_id": best_match.get("id"),
-                "text": sent.strip(),
-                "source": best_match["metadata"].get("exact_citation"),
-                "similarity": best_match.get("score")
-            })
-        return evidence_list
-
 # Singleton instance
-inference_engine = FiCOInferenceV3()
+inference_engine = FiCOInferenceV31()

@@ -1,37 +1,38 @@
 import json
 import time
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from .inference import inference_engine
 
-# 1. API Uygulaması
+# 1. API Uygulaması (v3.1)
 app = FastAPI(
-    title="FiCO v3.0 (Enterprise Explainable AI)",
-    description="Denetlenebilir ve Açıklanabilir Katılım Bankacılığı Uyum Analisti",
-    version="3.0.0"
+    title="FiCO v3.1 (Governed Decision System)",
+    description="Kurumsal Karar Motoru - Politika ve Yönetişim Denetimli",
+    version="3.1.0"
 )
 
 # 2. Veri Modelleri
 class QuestionRequest(BaseModel):
     question: str
+    mode: Optional[str] = "strict"
 
-class EvidenceItem(BaseModel):
-    rule_id: str
-    text: str
-    source: str
-    similarity: float
+class DecisionTrace(BaseModel):
+    priority_used: bool
+    recency_used: bool
 
 class AnswerResponse(BaseModel):
     answer: str
     sources: List[Dict[str, Any]]
     confidence: float
     query_type: str
-    evidence: List[EvidenceItem]
+    mode: str
+    escalated: bool
+    decision_trace: DecisionTrace
 
-# 3. Denetim Günlüğü (Audit Logger)
-def log_audit(data: Dict[str, Any]):
-    """Her sorguyu denetim için kayıt altına alır."""
+# 3. Gelişmiş Denetim Günlüğü (v3.1 Audit Trace)
+def log_audit_v31(data: Dict[str, Any]):
+    """Karar süreçlerini detaylı olarak denetim için kayıt altına alır."""
     log_file = "./backend/data/audit.jsonl"
     with open(log_file, "a", encoding="utf-8") as f:
         log_entry = {
@@ -43,30 +44,35 @@ def log_audit(data: Dict[str, Any]):
 # 4. Endpoints
 @app.get("/")
 def health_check():
-    return {"status": "online", "system": "FiCO v3.0 Enterprise"}
+    return {"status": "online", "system": "FiCO v3.1 Governed Decision System"}
 
 @app.post("/ask", response_model=AnswerResponse)
 async def ask_question(request: QuestionRequest):
-    """v3.0 - Açıklanabilir ve Denetlenebilir Soru-Cevap Servisi."""
+    """v3.1 - Yönetilen Karar Motoru (Governed Decision Engine)."""
     try:
-        # Analiz sürecini başlat
-        result = inference_engine.generate_response(request.question)
+        # Karar alma sürecini başlat
+        result = inference_engine.generate_response(request.question, mode=request.mode)
         
-        # Denetim Kaydı Oluştur
-        log_audit({
+        # Detaylı Denetim İzi (Audit Trace)
+        log_audit_v31({
             "query": request.question,
-            "answer": result.get("answer"),
-            "confidence": result.get("confidence"),
             "query_type": result.get("query_type"),
-            "source_ids": [s.get("id") for s in result.get("sources", [])]
+            "mode": result.get("mode"),
+            "escalated": result.get("escalated"),
+            "confidence": result.get("confidence"),
+            "priority_applied": result.get("decision_trace", {}).get("priority_used"),
+            "recency_adjusted": result.get("decision_trace", {}).get("recency_used"),
+            "final_answer": result.get("answer")
         })
         
         return {
-            "answer": result.get("answer", "Cevap üretilemedi."),
+            "answer": result.get("answer", "Analiz tamamlanamadı."),
             "sources": result.get("sources", []),
             "confidence": result.get("confidence", 0.0),
             "query_type": result.get("query_type", "unknown"),
-            "evidence": result.get("evidence", [])
+            "mode": result.get("mode", "strict"),
+            "escalated": result.get("escalated", False),
+            "decision_trace": result.get("decision_trace", {"priority_used": False, "recency_used": False})
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
