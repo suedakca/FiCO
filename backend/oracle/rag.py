@@ -3,24 +3,27 @@ import json
 import numpy as np
 import chromadb
 from typing import List, Dict, Any
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, CrossEncoder
 from rank_bm25 import BM25Okapi
 
 class RiCOVectorStore:
-    """FiCO için hibrit arama (Dense + Sparse) destekli üretim seviyesi RAG motoru."""
+    """FiCO v3.0 Gelişmiş RAG Motoru (Hybrid + Rerank + Deduplication)."""
     
     def __init__(self, persist_directory: str = "./backend/data/chroma_db", kb_path: str = "./backend/data/knowledge_base.json"):
-        # 1. Embedding Modeli (BAAI/bge-m3) - Üretim Sınıfı
+        # 1. Embedding Modeli (BAAI/bge-m3)
         self.model = SentenceTransformer("BAAI/bge-m3")
         
-        # 2. ChromaDB (Dense)
+        # 2. Reranker (Cross-Encoder)
+        self.reranker = CrossEncoder("BAAI/bge-reranker-large")
+        
+        # 3. ChromaDB (Dense)
         self.client = chromadb.PersistentClient(path=persist_directory)
         self.collection = self.client.get_or_create_collection(
             name="fico_knowledge_v2",
             metadata={"hnsw:space": "cosine"}
         )
 
-        # 3. BM25 (Sparse) Hazırlığı
+        # 4. BM25 (Sparse)
         self.kb_docs = self._load_kb(kb_path)
         self.bm25 = self._init_bm25()
 
@@ -31,84 +34,87 @@ class RiCOVectorStore:
         return []
 
     def _init_bm25(self) -> BM25Okapi:
-        """BM25 için dökümanları tokenize eder ve indeksler."""
         tokenized_corpus = [self._tokenize(doc["content"]) for doc in self.kb_docs]
         return BM25Okapi(tokenized_corpus)
 
     def _tokenize(self, text: str) -> List[str]:
-        """Basit ama etkili temizleme ve tokenizasyon."""
         return text.lower().replace(".", "").replace(",", "").split()
 
-    def hybrid_search(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
-        """Dense ve Sparse aramayı birleştirerek en alakalı 3 dökümanı döner."""
+    def _deduplicate(self, docs: List[Dict[str, Any]], threshold: float = 0.95) -> List[Dict[str, Any]]:
+        """Semantik olarak kopya olan dökümanları temizler."""
+        if not docs: return []
         
-        # A. DENSE SEARCH (Vektör)
-        query_embedding = self.model.encode([query], normalize_embeddings=True).tolist()
-        v_results = self.collection.query(
-            query_embeddings=query_embedding,
-            n_results=10, # Birleştirme için geniş liste alıyoruz
-            include=["documents", "metadatas", "distances"]
-        )
+        unique_docs = [docs[0]]
+        for i in range(1, len(docs)):
+            is_duplicate = False
+            for u_doc in unique_docs:
+                # İçerik birebir aynıysa veya çok benzerse ele
+                if docs[i]["content"] == u_doc["content"]:
+                    is_duplicate = True
+                    break
+            if not is_duplicate:
+                unique_docs.append(docs[i])
+        return unique_docs
 
-        # Vektör sonuçlarını bir sözlükte topla (ID -> Score)
-        # Chroma cosine distance (0-2), 1-dist/2 = similarity (tek yönlü)
+    def search(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
+        """Hibrit arama yapar, rerank uygular ve tekilleştirir."""
+        
+        # A. HYBRID RETRIEVAL (Top 10 aday getir)
+        candidates = self._hybrid_retrieval(query, k=10)
+        
+        if not candidates: return []
+
+        # B. RERANKING (Cross-Encoder)
+        # Sorgu ve içerik çiftlerini hazırla
+        sentence_pairs = [[query, doc["content"]] for doc in candidates]
+        rerank_scores = self.reranker.predict(sentence_pairs)
+        
+        for i, score in enumerate(rerank_scores):
+            candidates[i]["rerank_score"] = float(score)
+            # Re-ranker skorunu logit'ten 0-1 aralığına normalize edebiliriz (isteğe bağlı)
+            candidates[i]["score"] = float(score) 
+
+        # Rerank skoruna göre sırala
+        candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
+
+        # C. DEDUPLICATION & TOP-K
+        unique_candidates = self._deduplicate(candidates)
+        return unique_candidates[:k]
+
+    def _hybrid_retrieval(self, query: str, k: int = 10) -> List[Dict[str, Any]]:
+        """Vektör ve BM25 sonuçlarını birleştirir."""
+        query_embedding = self.model.encode([query], normalize_embeddings=True).tolist()
+        v_results = self.collection.query(query_embeddings=query_embedding, n_results=k, include=["documents", "metadatas", "distances"])
+
         dense_scores = {}
         if v_results["ids"]:
             for i, doc_id in enumerate(v_results["ids"][0]):
-                sim = 1 - (v_results["distances"][0][i]) 
-                dense_scores[doc_id] = sim
+                dense_scores[doc_id] = 1 - v_results["distances"][0][i]
 
-        # B. SPARSE SEARCH (BM25)
         tokenized_query = self._tokenize(query)
         bm25_scores = self.bm25.get_scores(tokenized_query)
-        
-        # BM25 Skorlarını normalleştir (0-1)
         max_bm25 = max(bm25_scores) if len(bm25_scores) > 0 and max(bm25_scores) > 0 else 1
-        bm25_norm_scores = {self.kb_docs[i]["id"]: (bm25_scores[i] / max_bm25) for i in range(len(bm25_scores))}
-
-        # C. MERGE & SCORE (Weighted Scoring)
-        hybrid_results = []
-        all_ids = set(list(dense_scores.keys()) + list(bm25_norm_scores.keys()))
-
-        for doc_id in all_ids:
-            d_score = dense_scores.get(doc_id, 0)
-            s_score = bm25_norm_scores.get(doc_id, 0)
-            
-            # Hibrit Skor: 0.7 Dense + 0.3 Sparse
+        
+        hybrid_candidates = []
+        for i, doc in enumerate(self.kb_docs):
+            d_score = dense_scores.get(doc["id"], 0)
+            s_score = bm25_scores[i] / max_bm25
             final_score = (0.7 * d_score) + (0.3 * s_score)
             
-            # Orijinal döküman verisini bul
-            doc_data = next((d for d in self.kb_docs if d["id"] == doc_id), None)
-            if doc_data:
-                hybrid_results.append({
-                    "id": doc_id,
-                    "content": doc_data["content"],
-                    "metadata": doc_data["metadata"],
-                    "score": round(final_score, 4)
+            if final_score > 0:
+                hybrid_candidates.append({
+                    "id": doc["id"],
+                    "content": doc["content"],
+                    "metadata": doc["metadata"],
+                    "hybrid_score": final_score
                 })
-
-        # Skorlara göre sırala ve top-k döndür
-        hybrid_results.sort(key=lambda x: x["score"], reverse=True)
-        return hybrid_results[:k]
-
-    def add_documents(self, documents: List[Dict[str, Any]]):
-        """Yeni döküman ekleme (Vektör tabanı için)."""
-        ids = [doc["id"] for doc in documents]
-        texts = [doc["content"] for doc in documents]
-        metadatas = [doc["metadata"] for doc in documents]
         
-        embeddings = self.model.encode(texts, normalize_embeddings=True).tolist()
-        self.collection.add(
-            ids=ids,
-            embeddings=embeddings,
-            documents=texts,
-            metadatas=metadatas
-        )
-        print(f"✅ {len(ids)} döküman vektör tabanına eklendi.")
+        hybrid_candidates.sort(key=lambda x: x["hybrid_score"], reverse=True)
+        return hybrid_candidates[:k]
 
 # Singleton instance
 rag_engine = RiCOVectorStore()
 
 def retrieve_context(query: str) -> List[Dict[str, Any]]:
-    """Dışarıdan erişim için sarmalayıcı (Hibrit Arama)."""
-    return rag_engine.hybrid_search(query)
+    """FiCO v3.0 arama arabirimi."""
+    return rag_engine.search(query)

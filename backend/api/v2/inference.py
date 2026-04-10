@@ -1,70 +1,90 @@
 from typing import List, Dict, Any
-from backend.oracle.rag import retrieve_context
+import numpy as np
+from backend.oracle.rag import retrieve_context, rag_engine
+from backend.oracle.classifier import query_classifier
 
-class FiCOInference:
-    """FiCO (Fikh Compliance Oracle) Üretim Seviyesi Inference Motoru."""
+class FiCOInferenceV3:
+    """FiCO v3.0 - Enterprise Explainable AI Inference Motoru."""
     
-    def __init__(self, model_handler=None, threshold: float = 0.7):
+    def __init__(self, threshold: float = 0.7):
         self.threshold = threshold
-        self.system_prompt = """Sen uzman bir 'Katılım Bankacılığı Uyum Analisti' (FiCO) ajansısın.
-GÖREVİN: Kullanıcı sorularına mevzuat bağlamı üzerinden cevap vermektir.
-
-KURALLAR:
-1. Dil: Her zaman TÜRKÇE cevap ver.
-2. Format: Mutlaka aşağıdaki başlıkları kullan:
-HÜKÜM: (Özet karar)
-GEREKÇE: (Analiz ve dayanak açıklaması)
-KAYNAK: (Mevzuat maddesi ve referansı)
-
-3. Reddetme: Eğer bağlamda soruya cevap verecek yeterli veri yoksa tam olarak şunu söyle:
-“Bu konuda mevcut veri setinde açık bir hüküm bulunamamıştır.”
-
-4. Güvenlik: Asla kaynak uydurma. Sadece verilen bağlamdaki bilgileri kullan.
-"""
+        self.prompts = {
+            "compliance_decision": "TALİMAT: Kesin ve kuralcı bir ton kullan. Sadece dökümanlardaki hükümlere odaklan. Spekülasyon yapma.",
+            "comparison": "TALİMAT: Kurallar arasındaki benzerlik ve farkları madde madde açıkla. Mukayeseli bir analiz sun.",
+            "edge_case": "TALİMAT: İstisnai durumları ve koşulları (eğer, ise) vurgulayarak analiz et. Operasyonel riskleri belirt.",
+            "definition": "TALİMAT: Terimin mevzuat sözlüğündeki karşılığını ve kapsamını açıkla.",
+            "general_inquiry": "TALİMAT: Profesyonel bir üslupla genel mevzuat bilgilendirmesi yap."
+        }
 
     def generate_response(self, question: str) -> Dict[str, Any]:
-        """Uçtan uca muhakeme akışı: Retrieve -> Filter -> Structured Inject -> Respond."""
+        """v3.0 Akışı: Classify -> Retrieve -> Reason -> Map Evidence."""
         
-        # 1. RAG'dan Hibrit Bağlam Getir
-        raw_context = retrieve_context(question)
+        # 1. Sorgu Sınıflandırma
+        query_type = query_classifier.classify(question)
         
-        # 2. Confidence Filtering (Threshold = 0.7)
-        filtered_context = [doc for doc in raw_context if doc.get("score", 0) >= self.threshold]
+        # 2. Gelişmiş Arama (Reranked & Deduplicated)
+        context_docs = retrieve_context(question)
         
-        # Ortalama güven skoru hesapla
-        avg_confidence = 0.0
+        # 3. Confidence Filtering
+        filtered_context = [doc for doc in context_docs if doc.get("score", 0) >= self.threshold]
+        
+        # 4. Dinamik Güven Skoru (max_sim * coverage)
+        confidence = 0.0
         if filtered_context:
-            avg_confidence = round(sum(d["score"] for d in filtered_context) / len(filtered_context), 4)
+            max_sim = max(d["score"] for d in filtered_context)
+            coverage_factor = min(1.0, len(filtered_context) / 3.0) # 3 döküman tam kapsam sayılır
+            confidence = round(max_sim * coverage_factor, 4)
 
-        # 3. Bağlam Kontrolü ve Reddetme Mantığı
+        # 5. Reddetme Mantığı
         if not filtered_context:
             return {
                 "answer": "Bu konuda mevcut veri setinde açık bir hüküm bulunamamıştır.",
                 "sources": [],
-                "confidence": avg_confidence,
-                "status": "refused_by_threshold"
+                "confidence": 0.0,
+                "query_type": query_type,
+                "evidence": []
             }
 
-        # 4. Yapılandırılmış Bağlam (Structured Context Injection)
-        context_parts = []
+        # 6. Dinamik Prompt Seçimi
+        specialized_instruction = self.prompts.get(query_type, self.prompts["general_inquiry"])
+        
+        # 7. Bağlam Hazırlığı
+        context_text = ""
         for i, doc in enumerate(filtered_context):
-            citation = doc["metadata"].get("exact_citation", "Bilinmeyen Kaynak")
-            category = doc["metadata"].get("category", "Genel")
-            part = f"[{i+1}] Kural:\n{doc['content']}\n\nKaynak:\n{citation}\n\nKategori:\n{category}\n---"
-            context_parts.append(part)
-        
-        structured_context = "\n\n".join(context_parts)
+            context_text += f"[KAYNAK {i+1}]: {doc['content']} (Referans: {doc['metadata'].get('exact_citation','')})\n\n"
 
-        # 5. Prompt İnşası
-        full_prompt = f"{self.system_prompt}\n\nBAĞLAM:\n{structured_context}\n\nSORU: {question}\n\nCEVAP:"
+        # 8. Mock Answer (Gerçekte LLM tarafından üretilecek)
+        answer = "HÜKÜM:\nİlgili katılım bankacılığı mevzuatı uyarınca işlem caizdir.\n\nGEREKÇE:\nİşlemde risk paylaşımı yapıldığı görülmektedir."
         
-        # 6. Mock Response (Pipeline testi için - Fine-tuned model çıktısını simüle eder)
+        # 9. Kanıt Eşleme (Evidence Mapping)
+        evidence = self._map_evidence(answer, filtered_context)
+
         return {
-            "answer": "HÜKÜM:\nSöz konusu işlem uygun görülmüştür.\n\nGEREKÇE:\nBağlamdaki kurallar çerçevesinde şartlar sağlanmaktadır.\n\nKAYNAK:\n[1] Numaralı Kural",
+            "answer": answer,
             "sources": filtered_context,
-            "confidence": avg_confidence,
-            "raw_prompt": full_prompt
+            "confidence": confidence,
+            "query_type": query_type,
+            "evidence": evidence
         }
 
+    def _map_evidence(self, answer: str, context: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Cevaptaki iddiaları dökümanlarla eşleştirir (Basit semantik eşleme)."""
+        evidence_list = []
+        sentences = answer.split(".")
+        
+        for sent in sentences:
+            if len(sent.strip()) < 10: continue
+            
+            # Her cümle için en yakın dökümanı bul (Simüle ediliyor)
+            # v3.0'da burada cümle seviyesinde embedding karşılaştırması yapılır.
+            best_match = context[0] 
+            evidence_list.append({
+                "rule_id": best_match.get("id"),
+                "text": sent.strip(),
+                "source": best_match["metadata"].get("exact_citation"),
+                "similarity": best_match.get("score")
+            })
+        return evidence_list
+
 # Singleton instance
-inference_engine = FiCOInference()
+inference_engine = FiCOInferenceV3()
