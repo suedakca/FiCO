@@ -21,12 +21,13 @@ def train_fico_model():
     model = FastLanguageModel.get_peft_model(
         model,
         r = config.r,
-        target_modules = config.target_modules,
-        lora_alpha = config.lora_alpha,
-        lora_dropout = config.lora_dropout,
+        target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
+                      "gate_proj", "up_proj", "down_proj",],
+        lora_alpha = 32,
+        lora_dropout = 0.05,
         bias = "none",
         use_gradient_checkpointing = True,
-        random_state = config.seed,
+        random_state = 42,
     )
 
     # 3. Veri Setini Hazırla
