@@ -22,16 +22,20 @@ class EvaluationService:
             ("human", "Soru: {question}\nCevap: {answer}")
         ])
 
-        # Paralel çalıştırma veya sıralı (basitlik için sıralı)
+        # Paralel çalıştırma
         faith_chain = faith_prompt | self.llm | StrOutputParser()
         rel_chain = rel_prompt | self.llm | StrOutputParser()
 
         try:
-            faith_result = await faith_chain.ainvoke({"context": context, "answer": answer})
-            rel_result = await rel_chain.ainvoke({"question": question, "answer": answer})
+            import asyncio
+            import re
+            
+            faith_result, rel_result = await asyncio.gather(
+                faith_chain.ainvoke({"context": context, "answer": answer}),
+                rel_chain.ainvoke({"question": question, "answer": answer})
+            )
             
             # Sayıları ayıkla
-            import re
             faith_score = float(re.findall(r"0\.\d+|1\.0", faith_result)[0]) if re.findall(r"0\.\d+|1\.0", faith_result) else 0.8
             rel_score = float(re.findall(r"0\.\d+|1\.0", rel_result)[0]) if re.findall(r"0\.\d+|1\.0", rel_result) else 0.8
             

@@ -69,12 +69,12 @@ function App() {
 
     try {
       const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
-      const response = await fetch(`${baseUrl}/ask`, {
+      const response = await fetch(`${baseUrl}/v1/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          question: queryText,
-          mode: 'production'
+          user_id: 'demo_user',
+          query_text: queryText
         })
       })
 
@@ -87,17 +87,16 @@ function App() {
         msg.id === msgId ? {
           ...msg,
           isAnalyzing: false,
-          content: data.answer || "Cevap üretilemedi.",
-          sources: data.sources ? data.sources.map(s => s.metadata?.source || s.metadata?.rule_id || 'Kaynak Belgeler') : [],
+          content: data.answer_text || "Cevap üretilemedi.",
+          sources: data.source_urls || [],
           evaluation: {
-            hit_rate: data.confidence || 0,
-            faithfulness: data.confidence || 0,
-            citation_accuracy: data.cache_hit ? 1.0 : 0.9
+            hit_rate: data.hit_rate || data.confidence_score || 0,
+            faithfulness: data.faithfulness || 0,
+            citation_accuracy: data.citation_accuracy || 0.9
           },
-          thought: data.decision_trace ? JSON.stringify(data.decision_trace, null, 2) : "Twin-Inference başarılı.",
+          thought: data.thought || "Analiz başarılı.",
           responseTime: duration,
-          escalated: data.escalated,
-          queryType: data.query_type
+          queryType: data.query_type || "Standard"
         } : msg
       ))
 

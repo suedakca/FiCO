@@ -22,11 +22,9 @@ class AgentTools:
         return "\n\n".join(formatted_results) if formatted_results else "İlgili bilgi bulunamadı."
 
     async def compliance_validator(self, answer: str, context: str) -> Dict[str, Any]:
-        """Üretilen cevabın kaynak metne (context) sadık olup olmadığını kontrol eder."""
+        """Üretilen cevabı denetler."""
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "Sen bir uyum denetçisisin. Verilen cevabın, sağlanan bağlama (context) %100 sadık olup olmadığını kontrol et. "
-                       "Eğer cevap bağlamda olmayan bir bilgi içeriyorsa [Fail] ve nedenini yaz. "
-                       "Sadece bağlamdaki bilgiler kullanılmışsa [Pass] yaz."),
+            ("system", "Sen bir uyum denetçisisin. Cevap bağlama sadıksa sadece [Pass] yaz. Değilse [Fail] ve kısa bir neden yaz."),
             ("human", "Bağlam: {context}\nCevap: {answer}")
         ])
         chain = prompt | self.llm | StrOutputParser()

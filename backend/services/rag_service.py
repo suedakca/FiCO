@@ -158,11 +158,11 @@ class ComplianceAgent:
         # Post-processing temizliği
         answer = self._clean_agent_output(answer)
 
-        # 4. Compliance Validation (Uyum Doğrulama)
-        validation = await agent_tools.compliance_validator(answer, context)
+        # 4. Compliance Validation & Evaluation (PARALEL)
+        validation_task = agent_tools.compliance_validator(answer, context)
+        evaluation_task = evaluation_service.evaluate_response(text, answer, context)
         
-        # 5. Evaluation (Değerlendirme)
-        eval_results = await evaluation_service.evaluate_response(text, answer, context)
+        validation, eval_results = await asyncio.gather(validation_task, evaluation_task)
 
         # Geçmişe ekle
         history.add_user_message(text)
@@ -185,19 +185,14 @@ class ComplianceAgent:
         route = await self._route_query(text)
         history = self._get_history(user_id)
         
-        # 1. Thought & Retrieval (Arka planda hızlıca yap)
-        thought_prompt = ChatPromptTemplate.from_messages([
-            ("system", "Hangi mevzuata (AAOIFI/TKBB) bakman gerektiğini düşün ve kısa bir not çıkar."),
-            ("human", "{text}")
-        ])
-        thought_chain = thought_prompt | self.llm | StrOutputParser()
-        thought = await thought_chain.ainvoke({"text": text})
-
+        # 1. Retrieval (Hızlı Başlatmak için Thought kısmını pas geçiyoruz veya paralel alıyoruz)
         context = await agent_tools.document_retriever(text)
         if route == "KARMASIK":
             detected_cat = "Genel"
             policy_context = await agent_tools.policy_aggregator(detected_cat)
             context += "\n\n### Mevzuat Birleşimi ###\n" + policy_context
+        
+        thought = "Analiz süreci başlatıldı..." # Geriye dönük uyum için
 
         # 2. Nihai Cevap (Sadeleştirilmiş Akış)
         answer_prompt = ChatPromptTemplate.from_messages([
