@@ -6,6 +6,7 @@ sqlalchemy
 psycopg2-binary
 sentence-transformers
 chromadb
+langchain-chroma
 rank_bm25
 langchain>=0.3.0
 langchain-community>=0.3.0

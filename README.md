@@ -1,72 +1,190 @@
-# FiCO - Katılım Bankacılığı Uyum Analisti
+# FiCO — Fıkhi Uyum Analisti
 
-FiCO, Katılım Bankacılığı (AAOIFI, TKBB) prensiplerine %100 uyumla çalışan, gelişmiş bir fıkhi denetim ve analiz ajansıdır. Sadece bilgi sağlamakla kalmaz, aynı zamanda ReAct akıl yürütme döngüsü ile belgeleri tarar, kaynakları doğrular ve tutarlılık analizi yapar.
+Katılım bankacılığı mevzuatları (AAOIFI / TKBB) üzerinde yerel LLM ile çalışan yapay zeka destekli uyum danışmanı.
 
-## 🚀 Gelişmiş Özellikler (Ajan Yapısı)
+**Mimari:** React 19 + FastAPI + ChromaDB + Ollama (yerel model, internet bağlantısı gerekmez)
 
-- **ReAct Agent Döngüsü**: Ajan, her soruda `Düşünce -> Eylem -> Gözlem` döngüsünü takip ederek derinlemesine analiz yapar.
-- **Hibrit Arama (Hybrid Search)**: ChromaDB (Vektör) ve BM25 (Anahtar Kelime) tekniklerini birleştirerek en alakalı mevzuat parçalarını bulur.
-- **Uyum Doğrulayıcı (Compliance Validator)**: Üretilen cevapların kaynak metne sadık olup olmadığını otomatik olarak denetler (Anti-Hallucination).
-- **Mevzuat Birleştirici (Policy Aggregator)**: AAOIFI, TKBB ve Kurum İçi Fetvalar gibi farklı kaynakları kategori bazlı hiyerarşik olarak birleştirir.
-- **Dinamik Yönlendirme (Routing)**: Soruları karmaşıklığına göre sınıflandırarak (Hızlı RAG vs. Çok Adımlı Akıl Yürütme) en uygun yanıt stratejisini belirler.
-- **Kalıcı Hafıza**: `SQLAlchemyChatMessageHistory` ile kullanıcıyla olan geçmiş konuşmaları hatırlar ve bağlamı korur.
+---
 
-## 🛠️ Kurulum ve Çalıştırma
+## Gereksinimler
 
-### Ön Gereksinimler
-- Python 3.9+
-- Node.js 18+
-- **Ollama**: Yerel modelleri (Llama 3.2, Nomic-Embed-Text) çalıştırmak için gereklidir.
+| Araç | Sürüm | Notlar |
+|------|-------|--------|
+| Python | 3.9+ | Backend için |
+| Node.js | 18+ | Frontend için |
+| [Ollama](https://ollama.com) | güncel | Yerel LLM çalıştırıcı |
+| PostgreSQL | 14+ | Sorgu geçmişi — **opsiyonel** |
 
-### Hızlı Başlat
+---
 
-1. **Bağımlılıkları Yükleyin**:
-   ```bash
-   npm install && npm run install:all
-   ```
+## Kurulum
 
-2. **Ollama Servisini Başlatın**:
-   Terminalde `ollama serve` komutunu çalıştırın ve gerekli modellerin yüklü olduğundan emin olun:
-   ```bash
-   ollama pull llama3.2
-   ollama pull nomic-embed-text
-   ```
+### 1. Ollama — Modelleri İndir
 
-3. **Vektör Veritabanını İlklendirin**:
-   Mevcut bilgi tabanını ChromaDB'ye aktarmak için:
-   ```bash
-   python3 backend/scripts/init_chroma.py
-   ```
+```bash
+# Ana LLM (Türkçe ince ayarlı Gemma 9B)
+ollama pull bazobehram/turkish-gemma-9b-t1
 
-4. **Uygulamayı Çalıştırın**:
-   ```bash
-   npm run dev
-   ```
+# Embedding modeli
+ollama pull nomic-embed-text
+```
 
-5. **Ollama Servisini Durdurun**:
-   ```bash
-   pkill ollama
-   ```
+Modellerin indirildiğini doğrula:
+```bash
+ollama list
+```
 
-## 📂 Proje Yapısı
+Ollama servisini başlat (yeni bir terminalde açık bırak):
+```bash
+ollama serve
+# Çalışıyor: http://localhost:11434
+```
+
+---
+
+### 2. Backend
+
+```bash
+cd backend
+
+# Sanal ortam oluştur (önerilir)
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+
+# Bağımlılıkları yükle
+pip install -r requirements.txt
+```
+
+#### Ortam Değişkenleri
+
+Proje kökünde `.env` dosyası oluştur (PostgreSQL olmadan da çalışır):
+
+```env
+# PostgreSQL — opsiyonel, kapalıysa geçmiş RAM'de tutulmaz, hata vermez
+POSTGRES_SERVER=localhost
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=fico_kasif
+```
+
+#### Bilgi Tabanını Başlat (Sadece ilk kurulumda)
+
+```bash
+# backend klasöründeyken çalıştır
+python3 scripts/init_chroma.py
+```
+
+Bu komut `data/knowledge_base.json` dosyasını okuyarak `data/chroma_db/` dizinini oluşturur. Bir kez çalıştırman yeterli.
+
+#### Backend'i Başlat
+
+```bash
+python3 -m uvicorn main:app --reload --reload-exclude ".venv" --port 8000
+```
+
+- API: [http://localhost:8000](http://localhost:8000)
+- Swagger: [http://localhost:8000/v1/openapi.json](http://localhost:8000/v1/openapi.json)
+
+---
+
+### 3. Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Uygulama: [http://localhost:5173](http://localhost:5173)
+
+---
+
+## Tam Başlatma Sırası (Özet)
+
+```bash
+# Terminal 1 — Ollama
+ollama serve
+
+# Terminal 2 — Backend
+cd backend && source .venv/bin/activate && python3 -m uvicorn main:app --reload --reload-exclude ".venv" --port 8000
+
+# Terminal 3 — Frontend
+cd frontend && npm run dev
+```
+
+Tarayıcıda [http://localhost:5173](http://localhost:5173) adresini aç.
+
+---
+
+## Proje Yapısı
 
 ```
 FiCO/
-├── backend/              # FastAPI & Agentic Backend
-│   ├── api/              # API Endpoints
-│   ├── core/             # Konfigürasyon ve DB Ayarları
-│   ├── data/             # Bilgi Tabanı ve ChromaDB Dosyaları
-│   ├── models/           # SQLAlchemy & Veri Modelleri
-│   ├── services/         # Ajan Mantığı (ReAct, Hybrid Search, Tools)
-│   │   ├── agent_tools.py      # Ajan Araçları
-│   │   ├── chroma_service.py   # Hibrit Arama Servisi
-│   │   ├── rag_service.py      # ReAct Agent & Core
-│   │   └── evaluation_service.py # RAGAS Metrikleri
-│   └── scripts/          # Veri Yönetim Betikleri
-├── frontend/             # React (Vite) Frontend
-└── README.md
+├── backend/
+│   ├── api/v1/endpoints/
+│   │   └── query.py              # Sorgu endpoint'i (POST /v1/query)
+│   ├── core/
+│   │   ├── config.py             # Uygulama ayarları (.env okur)
+│   │   └── db.py                 # Veritabanı bağlantısı
+│   ├── data/
+│   │   ├── knowledge_base.json   # Mevzuat bilgi tabanı (kaynak)
+│   │   └── chroma_db/            # Vektör DB — init_chroma.py ile oluşur
+│   ├── models/
+│   │   ├── database.py           # SQLAlchemy tabloları
+│   │   └── schemas.py            # Pydantic şemaları
+│   ├── scripts/
+│   │   └── init_chroma.py        # Bilgi tabanı başlatma (bir kez çalıştır)
+│   ├── services/
+│   │   ├── rag_service.py        # ReAct ajan döngüsü (ana mantık)
+│   │   ├── chroma_service.py     # Hibrit arama: Vector + BM25 + Cross-Encoder
+│   │   ├── evaluation_service.py # RAGAS benzeri metrikler (sadakat, uygunluk)
+│   │   └── agent_tools.py        # Belge getirme ve uyum doğrulama araçları
+│   ├── main.py                   # FastAPI giriş noktası
+│   └── requirements.txt
+└── frontend/
+    └── src/
+        └── App.jsx               # Ana React bileşeni
 ```
 
-## 🤝 Katkıda Bulunma
+---
 
-Katılım Bankacılığı kurallarını ve dijital uyumu ileriye taşımak için katkılarınızı bekliyoruz! Lütfen bir issue açın veya doğrudan bir pull request gönderin.
+## API Endpointleri
+
+| Method | Endpoint | Açıklama |
+|--------|----------|----------|
+| `POST` | `/v1/query` | Uyum analizi yap, cevap döner |
+| `GET` | `/v1/query?user_id=demo_user` | Sorgu geçmişini getir |
+| `POST` | `/v1/query/stream` | Streaming (akan) cevap |
+
+**Örnek istek:**
+```bash
+curl -X POST http://localhost:8000/v1/query \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "demo_user", "query_text": "Mudaraba sözleşmesinde zarar kime aittir?"}'
+```
+
+---
+
+## Sorun Giderme
+
+**Ollama modeli bulunamıyor:**
+```bash
+ollama pull bazobehram/turkish-gemma-9b-t1
+ollama pull nomic-embed-text
+```
+
+**ChromaDB boş, yanıt "İlgili bilgi bulunamadı" diyor:**
+```bash
+cd backend && python3 scripts/init_chroma.py
+```
+
+**PostgreSQL bağlantı hatası:**
+Uygulama DB olmadan çalışmaya devam eder — sorgu geçmişi kaydedilmez ama hata üretmez. Tamamen devre dışı bırakmak için `.env` dosyasındaki `POSTGRES_*` satırlarını sil.
+
+**`react-markdown` modülü bulunamıyor:**
+```bash
+cd frontend && npm install react-markdown
+```
+
+**500 Internal Server Error (sunucu kapatılırken):**
+CTRL+C ile sunucu kapatıldığında aktif istek varsa bu hata normaldir, kod hatası değildir.

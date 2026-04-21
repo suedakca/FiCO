@@ -36,8 +36,8 @@ class ResponseBase(BaseModel):
         return v
 
 class Response(ResponseBase):
-    id: int
-    query_id: int
+    id: Optional[int] = None
+    query_id: Optional[int] = None
     timestamp: datetime
     
     class Config:

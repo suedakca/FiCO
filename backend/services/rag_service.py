@@ -86,8 +86,8 @@ class ComplianceAgent:
 
     def _get_history(self, session_id: str):
         return SQLChatMessageHistory(
-            session_id=session_id, 
-            connection_string=self.db_uri
+            session_id=session_id,
+            connection=self.db_uri
         )
 
     async def _route_query(self, text: str) -> str:
@@ -102,11 +102,10 @@ class ComplianceAgent:
 
     async def query(self, text: str, user_id: str = "default_user") -> Dict[str, Any]:
         """FiCO Uyum Analisti ReAct Döngüsü."""
-        
-        route = await self._route_query(text)
+
         history = self._get_history(user_id)
-        
-        # 1. Thought (Düşünce)
+
+        # 1. Thought (Düşünce) - route, thought ve retrieval paralel çalışır
         thought_prompt = ChatPromptTemplate.from_messages([
             ("system", "Sen Katılım Bankacılığı Uyum Analisti ajansısın. Kullanıcı sorusuna cevap vermeden önce "
                        "Hangi mevzuata (AAOIFI/TKBB) bakman gerektiğini ve hangi araçları kullanacağını düşün. "
@@ -114,16 +113,20 @@ class ComplianceAgent:
             ("human", "Soru: {text}")
         ])
         thought_chain = thought_prompt | self.llm | StrOutputParser()
-        thought = await thought_chain.ainvoke({"text": text})
 
-        # 2. Action (Eylem) - Bilgi Getirme
-        context = await agent_tools.document_retriever(text)
+        # Bağımsız işlemleri paralel çalıştır: sınıflandırma + düşünce + belge getirme
+        route, thought, context = await asyncio.gather(
+            self._route_query(text),
+            thought_chain.ainvoke({"text": text}),
+            agent_tools.document_retriever(text)
+        )
+
+        # 2. Action (Eylem) - Bilgi Getirme (zaten yapıldı)
         
         if route == "KARMASIK":
-            # Karmaşık analizde politika birleştiriciyi de kullan
-            # Kategori tespiti (basit regex veya LLM ile de yapılabilir)
-            categories = ["Mudaraba", "Murabaha", "Sarf", "Teverruk", "Kripto"]
-            detected_cat = next((cat for cat in categories if cat.lower() in text.lower()), "Genel")
+            categories = ["Mudaraba", "Murabaha", "Sarf", "Teverruk", "Kripto", "Zekat", "Sukuk", "İjarah", "Muşaraka"]
+            text_lower = text.lower()
+            detected_cat = next((cat for cat in categories if cat.lower() in text_lower), "Genel")
             policy_context = await agent_tools.policy_aggregator(detected_cat)
             context += "\n\n### Mevzuat Birleşimi ###\n" + policy_context
 

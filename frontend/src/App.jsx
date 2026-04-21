@@ -92,7 +92,7 @@ function App() {
           evaluation: {
             hit_rate: data.hit_rate || data.confidence_score || 0,
             faithfulness: data.faithfulness || 0,
-            citation_accuracy: data.citation_accuracy || 0.9
+            citation_accuracy: data.citation_accuracy || 0
           },
           thought: data.thought || "Analiz başarılı.",
           responseTime: duration,

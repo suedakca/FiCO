@@ -29,16 +29,31 @@ class EvaluationService:
         try:
             import asyncio
             import re
-            
+
+            def _extract_score(text: str) -> float:
+                """0.0-1.0 arasında ondalık sayı çıkarır; bulunamazsa None döner."""
+                # Tam sayı ve ondalık: 0.85, 0.9, 1.0, 1.00 gibi formatları yakalar
+                matches = re.findall(r'\b(?:1\.0+|0\.\d+)\b', text)
+                for m in matches:
+                    try:
+                        val = float(m)
+                        if 0.0 <= val <= 1.0:
+                            return val
+                    except ValueError:
+                        continue
+                # Ondalıksız tam 1 sayısını da dene (örn. model "1" döndürdüyse)
+                if re.search(r'\b1\b', text):
+                    return 1.0
+                return None
+
             faith_result, rel_result = await asyncio.gather(
                 faith_chain.ainvoke({"context": context, "answer": answer}),
                 rel_chain.ainvoke({"question": question, "answer": answer})
             )
-            
-            # Sayıları ayıkla
-            faith_score = float(re.findall(r"0\.\d+|1\.0", faith_result)[0]) if re.findall(r"0\.\d+|1\.0", faith_result) else 0.8
-            rel_score = float(re.findall(r"0\.\d+|1\.0", rel_result)[0]) if re.findall(r"0\.\d+|1\.0", rel_result) else 0.8
-            
+
+            faith_score = _extract_score(faith_result) or 0.7
+            rel_score = _extract_score(rel_result) or 0.7
+
         except Exception as e:
             print(f"Değerlendirme hatası: {e}")
             faith_score, rel_score = 0.7, 0.7

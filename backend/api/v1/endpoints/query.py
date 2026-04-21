@@ -32,7 +32,7 @@ async def create_query(query_in: schemas.QueryCreate, db: Session = Depends(get_
         raise HTTPException(status_code=500, detail=f"RAG Error: {str(e)}")
 
     # 3. Try to save response to db (Optional)
-    db_response_id = 1 # Fallback ID
+    db_response_id = None
     timestamp = None
     try:
         if db_query_id:
@@ -55,7 +55,7 @@ async def create_query(query_in: schemas.QueryCreate, db: Session = Depends(get_
     import datetime
     return schemas.Response(
         id=db_response_id,
-        query_id=db_query_id or 1,
+        query_id=db_query_id,
         answer_text=rag_result["answer_text"],
         source_urls=rag_result["source_urls"],
         confidence_score=rag_result["confidence_score"],
