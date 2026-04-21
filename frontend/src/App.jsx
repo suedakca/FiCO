@@ -1,345 +1,322 @@
 import React, { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 
-const APP_VERSION = "v4.0 ChatGPT Edition"
-
-const INITIAL_MESSAGE = { 
-  role: 'assistant', 
-  content: 'Merhaba! Ben FiCo Kaşif. Katılım bankacılığı ve fıkhi uyum süreçlerinde size rehberlik etmek için buradayım. Bugün hangi konuyu keşfetmek istersiniz?\n\n*Not: Tüm yanıtlarım profesyonel uyum filtrelerinden geçerek puanlanmaktadır.*',
-  evaluation: {
-    hit_rate: 0.98,
-    faithfulness: 0.95,
-    citation_accuracy: 1.0
-  }
+const INITIAL_MESSAGE = {
+  id: 'SYSTEM_INIT',
+  role: 'assistant',
+  content: 'Hoş geldiniz. Ben FiCO. Finansal hedeflerinize ve mevzuat uyum süreçlerinize rehberlik eden Fihri\'nin dijital mirasındayız.\n\nBugün hangi finansal öngörüye ihtiyacınız var?',
+  reportId: 'OASIS-001',
+  tag: 'SYSTEM_READY'
 }
 
-function App() {
-  const [messages, setMessages] = useState([INITIAL_MESSAGE])
-  const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [history, setHistory] = useState([])
-  const [showThought, setShowThought] = useState(false)
-  const scrollRef = useRef(null)
+const TEMPLATES = [
+  { q: 'Kripto varlık teminatlı finansman analizi', icon: '💎' },
+  { q: "Mudaraba sözleşmelerinde zarar tazmin hükümleri", icon: '📄' },
+  { q: 'Katılım esaslı fonlarda arındırma süreci', icon: '✨' },
+  { q: 'Gecikme cezası (Ceza-i Şart) modelleri', icon: '⚠️' },
+]
+
+export default function App() {
+  const [messages, setMessages]   = useState([INITIAL_MESSAGE])
+  const [input, setInput]         = useState('')
+  const [history, setHistory]     = useState([])
+  const [activeTab, setActiveTab] = useState('hub')
+  const scrollRef   = useRef(null)
   const isFetchingRef = useRef(false)
 
   const fetchHistory = async () => {
     try {
-      const resp = await fetch('http://localhost:8000/v1/query?user_id=demo_user')
-      if (resp.ok) {
-        const data = await resp.json()
-        setHistory(data)
+      const b = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+      const r = await fetch(`${b}/v1/query?user_id=demo_user`)
+      if (r.ok) {
+        const data = await r.json()
+        if (Array.isArray(data)) setHistory(data)
       }
-    } catch (e) {
-      console.error("History fetch error", e)
-    }
+    } catch {}
   }
 
+  useEffect(() => { fetchHistory() }, [])
   useEffect(() => {
-    fetchHistory()
-  }, [])
-
-  const scrollToBottom = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: "smooth"
-      })
-    }
-  }
-
-  useEffect(() => {
-    scrollToBottom()
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages])
 
-  const handleSend = async (text = input) => {
-    const queryText = typeof text === 'string' ? text : input
-    if (!queryText.trim() || isFetchingRef.current) return
-    
+  const analyze = async (text = input) => {
+    const q = typeof text === 'string' ? text : input
+    if (!q.trim() || isFetchingRef.current) return
     isFetchingRef.current = true
-    setIsLoading(true)
-    const msgId = Date.now()
-
-    setMessages(prev => [...prev, 
-      { id: msgId + 1, role: 'user', content: queryText },
-      { id: msgId, role: 'assistant', content: '', isAnalyzing: true }
-    ])
+    const id = Date.now()
+    const startTime = performance.now()
+    setActiveTab('hub') 
+    
+    setMessages(p => {
+      // If we only have the system init message, replace it entirely
+      if (p.length === 1 && p[0].id === 'SYSTEM_INIT') {
+        return [
+          { id: id + 1, role: 'user', content: q },
+          { id, role: 'assistant', content: '', isAnalyzing: true, reportId: 'BEKLENİYOR', totalTime: null }
+        ]
+      }
+      // Otherwise append as usual
+      return [...p,
+        { id: id + 1, role: 'user', content: q },
+        { id, role: 'assistant', content: '', isAnalyzing: true, reportId: 'BEKLENİYOR', totalTime: null }
+      ]
+    })
     setInput('')
-    const startTime = Date.now()
 
     try {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
-      const response = await fetch(`${baseUrl}/v1/query`, {
+      const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+      const response = await fetch(`${base}/v1/query/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: 'demo_user',
-          query_text: queryText
-        })
+        body: JSON.stringify({ user_id: 'demo_user', query_text: q })
       })
 
-      if (!response.ok) throw new Error('API Error')
-      
-      const data = await response.json()
-      const duration = ((Date.now() - startTime) / 1000).toFixed(1)
-      
-      setMessages(prev => prev.map(msg => 
-        msg.id === msgId ? {
-          ...msg,
-          isAnalyzing: false,
-          content: data.answer_text || "Cevap üretilemedi.",
-          sources: data.source_urls || [],
-          evaluation: {
-            hit_rate: data.hit_rate || data.confidence_score || 0,
-            faithfulness: data.faithfulness || 0,
-            citation_accuracy: data.citation_accuracy || 0
-          },
-          thought: data.thought || "Analiz başarılı.",
-          responseTime: duration,
-          queryType: data.query_type || "Standard"
-        } : msg
-      ))
+      if (!response.ok) throw new Error('STREAM_API_ERROR')
 
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let fullContent = ''
+      let streamBuffer = '' // Robust buffer for metadata detection
+      
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) {
+          // Final safety break
+          setMessages(p => p.map(m => m.id === id ? { ...m, isAnalyzing: false } : m))
+          break
+        }
+
+        const chunk = decoder.decode(value, { stream: true })
+        streamBuffer += chunk
+        
+        // Timer stop marker: Text generation is done, scoring starting
+        if (streamBuffer.includes('[GENERATION_DONE]')) {
+           const parts = streamBuffer.split('[GENERATION_DONE]')
+           const currentText = parts[0].trim()
+           
+           setMessages(prev => prev.map(m => {
+             if (m.id === id && m.totalTime === null) {
+               const capturedTime = ((performance.now() - startTime) / 1000).toFixed(1)
+               return { ...m, content: currentText, totalTime: capturedTime, reportId: 'DEĞERLENDİRİLİYOR' }
+             }
+             return m.id === id ? { ...m, content: currentText } : m
+           }))
+           fullContent = currentText
+        }
+
+        // Final metadata arrival
+        if (streamBuffer.includes('[METADATA]')) {
+          const parts = streamBuffer.split('[METADATA]')
+          const textBeforeMeta = parts[0].split('[GENERATION_DONE]')[0].trim()
+          fullContent = textBeforeMeta
+          
+          try {
+            const meta = JSON.parse(parts[1])
+            setMessages(p => p.map(m => m.id === id ? {
+              ...m, 
+              isAnalyzing: false, 
+              content: fullContent,
+              totalTime: m.totalTime !== null ? m.totalTime : ((performance.now() - startTime) / 1000).toFixed(1),
+              sources: meta.source_urls || [],
+              tag:     meta.type?.toUpperCase() || 'ANALİZ',
+              confidence: Math.round((meta.confidence_score || 0.9) * 100),
+              reportId: `OA-${Math.floor(Date.now()/1000).toString(16).toUpperCase()}`
+            } : m))
+          } catch (e) {
+             setMessages(p => p.map(m => m.id === id ? { ...m, isAnalyzing: false, content: fullContent, reportId: 'TAMAMLANDI' } : m))
+          }
+          break 
+        } else if (!streamBuffer.includes('[GENERATION_DONE]')) {
+          // Normal stream flow (before any markers)
+          fullContent = streamBuffer
+          setMessages(p => p.map(m => m.id === id ? { ...m, isAnalyzing: false, content: fullContent } : m))
+        }
+      }
       fetchHistory()
-    } catch (error) {
-      console.error("API error", error)
-      setMessages(prev => prev.map(msg => 
-        msg.id === msgId ? {
-          ...msg,
-          isAnalyzing: false,
-          content: 'Üzgünüm, şu an bağlantı kurulamıyor. Lütfen sistem yöneticinizle iletişime geçin.'
-        } : msg
-      ))
-    } finally {
-      setIsLoading(false)
-      isFetchingRef.current = false
+    } catch (e) {
+      setMessages(p => p.map(m => m.id === id ? {
+        ...m, isAnalyzing: false, 
+        content: 'Sistem şu an çok yoğun. Lütfen Macbook fanları sakinleşince tekrar deneyin.',
+      } : m))
+    } finally { 
+      isFetchingRef.current = false 
     }
   }
 
-  const handleNewChat = () => {
-    setMessages([INITIAL_MESSAGE])
-    setInput('')
-  }
-
-  const handleSelectHistory = (h) => {
-    const q = h.query || h.query_text;
-    if (q) {
-      handleSend(q);
-    }
-  }
-
-  const suggestionChips = [
-    { q: "Kripto varlık teminatı", icon: "🪙" },
-    { q: "Mudaraba'da zarar paylaşımı", icon: "⚖️" },
-    { q: "Hisse senedi zekat hesabı", icon: "📈" },
-    { q: "Konut finansmanı kâr oranları", icon: "🏠" },
-    { q: "Vadeli sarf işlemleri", icon: "💱" },
-    { q: "Gecikme cezası ve faiz ayrımı", icon: "⚠️" },
-    { q: "Banka promosyonları hükmü", icon: "🎁" },
-    { q: "Altın bazlı yatırım fonları", icon: "✨" }
-  ]
+  const inSession = messages.length > 1
 
   return (
-    <div className="layout-container font-sans text-brand-text">
-      {/* Refined Ambient Overlay */}
-      <div className="glow-overlay top-[-5%] left-[-5%]"></div>
-      <div className="glow-overlay bottom-[-5%] right-[-5%] animate-pulse [animation-duration:10s]"></div>
+    <div className="oasis-container">
 
-      {/* Sidebar - Floating Glassmorphic */}
-      <aside className={`sidebar transition-all duration-500 ease-out ${sidebarOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 absolute'}`}>
-        <div className="p-6 flex flex-col h-full overflow-hidden">
-          
-          {/* Brand Identity */}
-          <div className="flex flex-col gap-1 mb-10 px-1">
-             <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-brand-primary flex items-center justify-center text-white text-[12px] font-black shadow-lg shadow-brand-primary/20">F</div>
-                <div className="font-extrabold text-[17px] tracking-tight text-brand-primary font-display">FiCo</div>
+      {/* ── Floating Oasis Portal ── */}
+      <nav className="oasis-nav">
+        <div className="nav-logo">F</div>
+        <button className={`nav-icon-btn ${activeTab === 'hub' ? 'active' : ''}`} onClick={() => setActiveTab('hub')}>
+           <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        </button>
+        <button className={`nav-icon-btn ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => setActiveTab('reports')}>
+           <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        </button>
+        <button className="nav-icon-btn" style={{marginTop: 'auto'}}>
+           <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        </button>
+      </nav>
+
+      {/* ── Main Oasis Stage ── */}
+      <main className="oasis-stage">
+        <header className="stage-header">
+          <div className="hub-indicator">
+            <span style={{width:'8px', height:'8px', borderRadius:'50%', background:'var(--color-primary)', boxShadow:'0 0 10px var(--color-primary)'}} />
+            Fihri Collective · Oasis Portalı {activeTab === 'reports' && '· Arşiv'}
+          </div>
+          <div className="user-profile" style={{display:'flex', alignItems:'center', gap:'12px'}}>
+             <div style={{textAlign:'right'}}>
+                <div style={{fontSize:'13px', fontWeight:700}}>Denetçi Kullanıcı</div>
+                <div style={{fontSize:'10px', color:'var(--text-soft)', textTransform:'uppercase'}}>Profesyonel Seviye 4</div>
              </div>
-          </div>
-
-          <button 
-            onClick={handleNewChat}
-            className="flex items-center gap-2.5 p-4 w-full bg-brand-primary text-white rounded-2xl text-[12px] font-bold hover:shadow-lg hover:shadow-brand-primary/20 transition-all mb-10 group active:scale-[0.98]"
-          >
-             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" /></svg>
-             Yeni Analiz Başlat
-          </button>
-
-          <nav className="flex-1 space-y-2 overflow-y-auto pr-2 custom-scrollbar">
-            <div className="text-[10px] font-bold text-brand-primary/40 uppercase tracking-[0.4em] px-2 py-4 mb-2 font-display">Denetim Arşivi</div>
-            {history.length > 0 ? history.map((h, i) => (
-              <button 
-                key={h.id || i} 
-                onClick={() => handleSelectHistory(h)}
-                className="w-full text-left px-4 py-3 rounded-xl text-[12px] text-brand-text-secondary hover:text-brand-primary hover:bg-white/60 transition-all truncate font-medium menu-item-text"
-              >
-                {h.query || h.query_text}
-              </button>
-            )) : (
-              <div className="px-2 py-2 text-brand-text-secondary/30 text-[11px] font-medium italic">Kayıt bulunamadı.</div>
-            )}
-          </nav>
-
-          <div className="mt-auto pt-6 border-t border-brand-border/30">
-             <div className="flex items-center gap-3 p-4 bg-white/40 rounded-2xl border border-brand-border/20 backdrop-blur-sm">
-                <div className="w-8 h-8 rounded-lg bg-brand-primary/10 flex items-center justify-center text-brand-primary text-[10px] font-black">BA</div>
-                <div className="flex flex-col">
-                   <span className="text-brand-text text-[11px] font-bold">Premium Access</span>
-                   <span className="text-brand-primary/60 text-[9px] font-bold uppercase tracking-wider">Lvl 4 Auditor</span>
-                </div>
-             </div>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Chat Main Area */}
-      <main className="chat-main custom-scrollbar">
-        {/* Minimal Header */}
-        <header className="w-full h-16 flex items-center justify-between px-10 bg-brand-bg/40 backdrop-blur-sm sticky top-0 z-30">
-          <div className="flex items-center gap-6">
-            <button 
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-white rounded-xl transition-all text-brand-primary/60 hover:text-brand-primary shadow-sm active:scale-90"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" /></svg>
-            </button>
-            <div className={`flex items-center gap-2 transition-opacity duration-300 ${messages.length > 1 ? 'opacity-100' : 'opacity-0'}`}>
-               <span className="w-2 h-2 rounded-full bg-brand-primary animate-pulse" />
-               <h1 className="font-bold text-[13px] text-brand-primary tracking-tight uppercase">FiCO Advisor Core</h1>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-             <div className="px-4 py-1.5 bg-white/80 text-brand-primary text-[10px] font-bold rounded-full border border-brand-border/50 uppercase tracking-widest shadow-sm">Live v4.4</div>
+             <div style={{width:'40px', height:'40px', borderRadius:'50%', background:'linear-gradient(135deg, #10B981, #C8922A)', border:'2px solid #fff', boxShadow:'0 4px 12px rgba(0,0,0,0.1)'}} />
           </div>
         </header>
 
-        {/* Vertical Scroll Area */}
-        <div ref={scrollRef} className="flex-1 w-full overflow-y-auto custom-scrollbar flex flex-col">
-          <div className="chat-content-limit px-10 pb-32">
-            
-            {messages.length === 1 ? (
-              <div className="hero-container animate-fade-in-up">
-                 <div className="flex flex-col gap-1 mb-8">
-                    <span className="text-brand-primary font-display font-bold text-[13px] tracking-[0.3em] uppercase opacity-70">Merhaba, ben FiCO.</span>
-                    <h2 className="hero-title !mt-0">Bugün neyi öğrenmek istersiniz?</h2>
-                 </div>
-                 <p className="hero-subtitle">
-                   Katılım bankacılığı mevzuatları ve fıkhi uyum süreçlerinde 
-                   kurumsal düzeyde destek sağlayan yapay zeka danışmanı.
-                 </p>
+        <div className="oasis-scroll" ref={scrollRef}>
+          <div className="oasis-canvas">
 
-                 <div className="suggestions-row">
-                    {suggestionChips.map((chip, i) => (
-                      <button 
-                        key={i} 
-                        onClick={() => handleSend(chip.q)}
-                        className="suggestion-card group"
-                      >
-                        <div className="text-2xl mb-4 group-hover:scale-125 transition-transform origin-left">{chip.icon}</div>
-                        <div className="text-[14px] font-bold text-brand-text mb-1 truncate">{chip.q}</div>
-                        <div className="text-[10px] text-brand-text-secondary font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">Başlat →</div>
-                      </button>
-                    ))}
-                 </div>
+            {activeTab === 'reports' ? (
+              <div className="archive-stage">
+                <h2 style={{fontSize:'32px', fontWeight:800, marginBottom:'32px'}}>Denetim <span>Arşivi</span></h2>
+                <div className="archive-grid" style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:'20px'}}>
+                  {history.length > 0 ? history.map((h, i) => (
+                    <div key={h.id || i} className="archive-item" onClick={() => analyze(h.query || h.query_text)}>
+                      <div className="archive-item-meta">Rapor · {h.id || i+1}</div>
+                      <div className="archive-item-query">{h.query || h.query_text}</div>
+                    </div>
+                  )) : (
+                    <div style={{gridColumn:'1/-1', textAlign:'center', padding:'100px 20px', opacity:0.6, background:'var(--surface-glass)', borderRadius:'30px', border:'1px dashed var(--color-primary)'}}>
+                      <div style={{fontSize:'40px', marginBottom:'16px'}}>📭</div>
+                      <div style={{fontSize:'15px', fontWeight:700}}>Henüz bir denetim raporu oluşturulmamış.</div>
+                      <div style={{fontSize:'13px'}}>Yeni bir analiz başlatarak arşivi doldurabilirsiniz.</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : !inSession ? (
+              <div className="hero-oasis">
+                <div className="oasis-greeting">FiCO'ya Tekrar Hoş Geldiniz</div>
+                <h1 className="oasis-title">
+                  Fihri'nin <span>Dijital Mirası</span> <br/> Burada Başlıyor.
+                </h1>
+                <p className="oasis-sub">
+                  Analize başlamak için aşağıdaki hazır şablonlardan birini seçin 
+                  veya aklınızdaki soruyu aşağıya yazın.
+                </p>
+                
+                <div className="oasis-grid">
+                  {TEMPLATES.map((t, i) => (
+                    <button key={i} className="oasis-pill-btn" onClick={() => analyze(t.q)}>
+                      <div className="pill-icon">{t.icon}</div>
+                      <div className="pill-text">{t.q}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : (
-              <div className="flex flex-col space-y-12 pt-6">
+              <div className="bloom-feed">
                 {messages.map((m, i) => (
-                  <div key={i} className={`flex flex-col w-full animate-message-in`} style={{ animationDelay: `${i * 0.05}s` }}>
-                    <div className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
-                      
-                      {m.role === 'assistant' && (
-                        <div className="flex items-center gap-2 mb-3 ml-2">
-                           <div className="w-6 h-6 rounded-lg bg-brand-primary flex items-center justify-center text-white text-[8px] font-black">F</div>
-                           <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-text-secondary">FiCO Advisors</span>
+                  m.role === 'user' ? (
+                    <div key={m.id} className="request-pill">
+                      <div className="pill-content">{m.content}</div>
+                    </div>
+                  ) : (
+                    <div key={m.id || i} className="oasis-module">
+                      <div className="module-glass">
+                        <div className="module-header">
+                          <div className="module-title">Analiz · {m.reportId || 'BEKLENİYOR'}</div>
+                          <div className="module-tag">{m.tag || 'ANALİZ'}</div>
                         </div>
-                      )}
 
-                      <div className={m.role === 'user' ? 'message-user' : 'message-assistant'}>
-                        <div className="prose-content">
-                          {m.role === 'assistant' && !m.isAnalyzing && (
-                            <span className="verdict-title font-display uppercase tracking-widest text-[11px] font-black mb-4 border-b border-brand-border pb-2 inline-block">
-                              Analitik Rapor & Hüküm
-                            </span>
-                          )}
-                          
-                          {m.content ? <ReactMarkdown>{m.content}</ReactMarkdown> : null}
-
-                          {m.isAnalyzing && (
-                            <div className="flex items-center gap-4 py-2">
-                               <div className="flex gap-2">
-                                  <div className="w-2 h-2 rounded-full bg-brand-primary animate-bounce" />
-                                  <div className="w-2 h-2 rounded-full bg-brand-primary animate-bounce [animation-delay:0.2s]" />
-                                  <div className="w-2 h-2 rounded-full bg-brand-primary animate-bounce [animation-delay:0.4s]" />
-                               </div>
-                               <span className="text-[11px] font-black uppercase tracking-[0.2em] text-brand-primary animate-pulse">Kurumsal Veriler Taranıyor</span>
+                        <div className="module-body">
+                          {m.isAnalyzing ? (
+                            <div className="bloom-loader">
+                              <div className="bloom-ring" />
+                              <div className="bloom-label">Fihri Bilgi Bankası Taranıyor...</div>
+                            </div>
+                          ) : (
+                            <div className="prose-oasis">
+                              <ReactMarkdown>{m.content}</ReactMarkdown>
+                              
+                              <div className="sources-v3" style={{marginTop:'32px', display:'flex', flexWrap:'wrap', gap:'12px'}}>
+                                {(m.sources && m.sources.length > 0) ? m.sources.map((s, si) => (
+                                  <div key={`${m.id}-src-${si}`} style={{padding:'8px 16px', borderRadius:'12px', background:'var(--color-primary-soft)', color:'var(--text-mint)', fontSize:'11px', fontWeight:700}}>
+                                    {s.split('/').pop()}
+                                  </div>
+                                )) : m.reportId === 'PENDING' ? (
+                                  <div style={{fontSize:'11px', color:'var(--text-soft)', fontStyle:'italic'}}>Kaynaklar taranıyor...</div>
+                                ) : null}
+                              </div>
                             </div>
                           )}
                         </div>
 
-                        {m.role === 'assistant' && !m.isAnalyzing && m.sources && m.sources.length > 0 && (
-                          <div className="source-muted flex flex-wrap gap-x-5 gap-y-2 mt-8 border-t border-brand-border pt-4">
-                             <div className="font-black text-brand-primary uppercase tracking-[0.2em] text-[10px]">Referans Kaynaklar:</div>
-                             {m.sources.map((s, si) => (
-                               <div key={si} className="flex items-center gap-1.5 text-brand-text-secondary font-bold group cursor-pointer hover:text-brand-primary transition-colors text-[11px]">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-brand-border group-hover:bg-brand-primary" />
-                                  {s}
-                               </div>
-                             ))}
-                          </div>
-                        )}
-
-                        {m.role === 'assistant' && !m.isAnalyzing && m.evaluation && (
-                          <div className="mt-6 flex gap-8">
-                             <div className="flex flex-col gap-0.5">
-                                <div className="text-[9px] font-black text-brand-text-secondary uppercase tracking-widest">Confidence</div>
-                                <div className="text-[13px] font-black text-brand-primary font-display">%{Math.round(m.evaluation.hit_rate * 100)} Verified</div>
+                        {(m.reportId && (m.reportId !== 'PENDING' || !m.isAnalyzing)) && (
+                          <div className="module-footer" style={{padding:'20px 32px', background:'rgba(255,255,255,0.4)', borderTop:'1px solid var(--border-glass)', display:'flex', justifyContent:'space-between'}}>
+                             <div className="footer-metric" style={{display:'flex', gap:'32px'}}>
+                                <div>
+                                   <div style={{fontSize:'9px', fontWeight:800, color:'var(--text-soft)', textTransform:'uppercase'}}>Güven Oranı</div>
+                                   <div style={{fontSize:'16px', fontWeight:800, color:'var(--color-primary)'}}>
+                                      {['BEKLENİYOR', 'DEĞERLENDİRİLİYOR'].includes(m.reportId) ? '...' : `${m.confidence}%`}
+                                   </div>
+                                </div>
+                                <div>
+                                   <div style={{fontSize:'9px', fontWeight:800, color:'var(--text-soft)', textTransform:'uppercase'}}>Analiz Süresi</div>
+                                   <div style={{fontSize:'16px', fontWeight:800, color:'var(--color-primary)'}}>
+                                      {m.reportId === 'BEKLENİYOR' ? 'Ölçülüyor...' : `${m.totalTime || 0} sn`}
+                                   </div>
+                                </div>
+                                <div>
+                                   <div style={{fontSize:'9px', fontWeight:800, color:'var(--text-soft)', textTransform:'uppercase'}}>Durum</div>
+                                   <div style={{fontSize:'16px', fontWeight:800, color:'var(--color-primary)'}}>
+                                      {m.reportId === 'BEKLENİYOR' ? 'DOĞRULANIYOR' : 'DOĞRULANDI'}
+                                   </div>
+                                </div>
                              </div>
-                             <div className="flex flex-col gap-0.5">
-                                <div className="text-[9px] font-black text-brand-text-secondary uppercase tracking-widest">Latency</div>
-                                <div className="text-[13px] font-black text-brand-primary font-display">{m.responseTime || "0.8"}s processed</div>
+                             <div className="footer-brand" style={{fontSize:'10px', fontWeight:800, color:'var(--color-accent)', textTransform:'uppercase', display:'flex', alignItems:'center', gap:'8px'}}>
+                                <svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M2.166 4.9L10 .3l7.834 4.6a1 1 0 01.5 1.175l-2.263 8.361a1 1 0 01-.767.74l-5.304 2.122-5.304-2.122a1 1 0 01-.767-.74L1.666 6.075a1 1 0 01.5-1.175zM10 3.033L4.694 6.13l1.861 6.877L10 14.593l3.445-1.586 1.861-6.877L10 3.033zM13 8a1 1 0 10-2 0 1 1 0 002 0zM7 8a1 1 0 10-2 0 1 1 0 002 0z" clipRule="evenodd"/></svg>
+                                FiCO • Fihri Collective
                              </div>
                           </div>
                         )}
                       </div>
                     </div>
-                  </div>
+                  )
                 ))}
               </div>
             )}
           </div>
         </div>
 
-        {/* Sticky Input Dock */}
-        <div className="input-area-sticky">
-           <div className="chat-content-limit px-10">
-              <div className="input-pill bg-white shadow-2xl shadow-slate-200">
-                <input 
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                  placeholder="Karmaşık ürün yapılarını fıkhi uyum açısından analiz edin..."
-                  className="flex-1 bg-transparent border-none focus:ring-0 outline-none text-[16px] py-4 text-brand-text placeholder:text-brand-text-secondary/40 font-medium"
-                />
-                <button 
-                  onClick={() => handleSend()}
-                  disabled={isFetchingRef.current || !input.trim()}
-                  className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-                    input.trim() ? 'bg-brand-primary text-white shadow-xl shadow-brand-primary/20 hover:scale-105 active:scale-90' : 'bg-brand-bg text-brand-text-secondary/15'
-                  }`}
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 12h14M12 5l7 7-7 7" /></svg>
-                </button>
-              </div>
-              <div className="text-center mt-5 text-[10px] text-brand-text-secondary font-bold uppercase tracking-[0.3em] opacity-40">
-                FiCo - Fihri Collective - v4.4 • Enterprise AI Compliance
-              </div>
-           </div>
+        {/* ── Oasis Input Zone ── */}
+        <div className="oasis-input-zone">
+          <div className="oasis-input-wrap">
+            <input 
+              className="oasis-field" 
+              placeholder="Yeni bir finansal ufuk keşfedin..."
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && analyze()}
+            />
+            <button 
+              className="btn-bloom"
+              onClick={() => analyze()}
+              disabled={isFetchingRef.current || !input.trim()}
+            >
+              <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>
+            </button>
+          </div>
         </div>
+
       </main>
     </div>
   )
 }
-
-export default App

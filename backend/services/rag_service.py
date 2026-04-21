@@ -11,7 +11,7 @@ from langchain_community.chat_message_histories.sql import SQLChatMessageHistory
 from core.config import settings
 from .chroma_service import chroma_service
 from .agent_tools import agent_tools
-from .evaluation_service import evaluation_service
+from .unified_eval_service import unified_eval_service
 
 class ComplianceAgent:
     def __init__(self):
@@ -19,7 +19,7 @@ class ComplianceAgent:
             model="bazobehram/turkish-gemma-9b-t1", 
             temperature=0, 
             top_p=0.85,
-            repeat_penalty=1.3,
+            repeat_penalty=1.1,
             num_predict=1024
         )
         self.db_uri = settings.SQLALCHEMY_DATABASE_URI
@@ -38,6 +38,9 @@ class ComplianceAgent:
             r'\boperationsinde\b': 'işlemlerinde',
             r'\bfounderedidir\b': 'bulunmaktadır',
             r'\bhargaını\b': 'fiyatını',
+            r'm[uü]r[aâ]ha[h]+a': 'Murabaha',
+            r'm[uü]r[aâ]ha[cç]a': 'Murabaha',
+            r'\bdövret\b': 'dair',
             r'\bpayişine\b': 'paylaşımına',
             r'\bpayişin\b': 'paylaşımı',
             r'\bzorar\b': 'zarar',
@@ -66,9 +69,11 @@ class ComplianceAgent:
         # 2. Yasaklı Teknik İbareler, ID'ler ve Düşünce Blokları
         patterns = [
             r'<think>.*?</think>', 
-            r'ID: \w+', r'Uyum Skoru: \d+', r'Kaynak:', 
+            r'\b(std|internal|pub)_\d+\b', # Teknik ID'leri temizle (Örn: internal_115)
+            r'\[(std|internal|pub)_\d+\]', # Köşeli parantez içindekileri temizle (Örn: [std_066])
+            r'ID: \w+', r'Uyum Skoru: \d+', 
             r'Bağlam:', r'İçerik:', r'Geçmiş:', r'Context:',
-            r'Atıf:', r'\*\*', 
+            r'Atıf:', 
         ]
         for pattern in patterns:
             text = re.sub(pattern, '', text, flags=re.DOTALL | re.IGNORECASE)
@@ -114,14 +119,10 @@ class ComplianceAgent:
         ])
         thought_chain = thought_prompt | self.llm | StrOutputParser()
 
-        # Bağımsız işlemleri paralel çalıştır: sınıflandırma + düşünce + belge getirme
-        route, thought, context = await asyncio.gather(
-            self._route_query(text),
-            thought_chain.ainvoke({"text": text}),
-            agent_tools.document_retriever(text)
-        )
-
-        # 2. Action (Eylem) - Bilgi Getirme (zaten yapıldı)
+        # Sequentialize independent tasks to avoid flooding Ollama
+        route   = await self._route_query(text)
+        thought = await thought_chain.ainvoke({"text": text})
+        context = await agent_tools.document_retriever(text)
         
         if route == "KARMASIK":
             categories = ["Mudaraba", "Murabaha", "Sarf", "Teverruk", "Kripto", "Zekat", "Sukuk", "İjarah", "Muşaraka"]
@@ -134,13 +135,14 @@ class ComplianceAgent:
         answer_prompt = ChatPromptTemplate.from_messages([
             ("system", """Sen Katılım Bankacılığı alanında uzman bir 'Uyum Denetçisi'sin.
  
- HUKUKİ VE DİLSEL KURALLAR:
-- KRİTİK DİL KİLİDİ: Tüm cevabını SADECE akıcı ve doğal bir TÜRKÇE ile ver. Teknik terimler hariç kesinlikle İngilizce kullanma.
-- HİYERARŞİ: Başlıklar için asla ### veya ## gibi Markdown işaretleri kullanma. Başlıkları tamamen BÜYÜK HARF VE BOLD (Örn: **ZARARIN SORUMLULUĞU**) olarak yaz.
-- EMFAZ: Önemli kavramları metin içinde **bold** yaparak belirt.
-- SADELİK: ***, --- veya > gibi ayırıcı semboller kullanma.
-- ÜSLUP: "Özetle" veya "Sonuç olarak" gibi geçiş ifadelerinden kaçın. Doğrudan bilgiye odaklan.
-- DÖKÜMAN SADAKATİ: Sadece 'Bağlam' içindeki bilgileri kullan ve döküman ID'sini (Örn: [std_1]) cümle sonunda belirt.
+ KURALLAR VE KESİN KISITLAMALAR:
+ 0. KRİTİK BAĞLAM KİLİDİ: SADECE sana verilen 'Bağlam' içindeki bilgileri kullan. Eğer sorunun cevabı Bağlam içinde DOĞRUDAN VE NET olarak yoksa, kesinlikle yorum yapma ve HİÇBİR AÇIKLAMA EKLEMEDEN Rule 6'yı uygula.
+ 1. KESİN TÜRKÇE KİLİDİ: Tüm cevabını SADECE akıcı ve doğal bir TÜRKÇE ile ver. 
+ 2. HİYERARŞİ: Başlıklar için asla ### veya ## gibi Markdown işaretleri kullanma. Başlıkları tamamen BÜYÜK HARF VE BOLD olarak yaz.
+ 3. SADELİK: ***, --- veya > gibi ayırıcı semboller kullanma. Doğrudan bilgiye odaklan.
+ 4. ATIF STİLİ: Metin içerisinde asla [std_1] gibi teknik ID'leri yazma. Bunun yerine tüm cevap bittikten sonra en alta **KAYNAK DÖKÜMANLAR:** başlığı aç ve kullandığın tüm kaynakların TAM ADINI buraya listele.
+ 5. YÖNLENDİRME (REFERRAL) MESAJI: "Bu konu mevzuat ve banka politikalarında henüz netlik kazanmamış özel bir inceleme gerektirmektedir. Lütfen bankanızın **Danışma Kurulu'na** başvurun."
+ 6. MUTLAK DOĞRUDANLIK: Eğer bağlamdaki bilgiler kullanıcının sorusuna NET CEVAP VERMİYORSA (Örn: Gelecek tahmini, Metaverse vb.), aradaki hiçbir bilgiyi özetleme. Hiçbir ön açıklama yapma. SADECE Rule 5'teki cümleyi yaz ve dur.
  
  Bağlam:
  {context}
@@ -158,14 +160,15 @@ class ComplianceAgent:
             "question": text
         })
 
+        # Metadata extraction (Before cleaning)
+        source_ids = list(set(re.findall(r"(?:\[)?\b(std_\d+|internal_\d+|pub_\d+)\b(?:\])?", answer)))
+
         # Post-processing temizliği
         answer = self._clean_agent_output(answer)
 
-        # 4. Compliance Validation & Evaluation (PARALEL)
-        validation_task = agent_tools.compliance_validator(answer, context)
-        evaluation_task = evaluation_service.evaluate_response(text, answer, context)
-        
-        validation, eval_results = await asyncio.gather(validation_task, evaluation_task)
+        # 4. Compliance Validation & Evaluation (SEQUENTIAL)
+        validation = await agent_tools.compliance_validator(answer, context)
+        eval_results = await evaluation_service.evaluate_response(text, answer, context)
 
         # Geçmişe ekle
         history.add_user_message(text)
@@ -177,7 +180,7 @@ class ComplianceAgent:
             "route": route,
             "validation": validation,
             "evaluation": eval_results,
-            "source_urls": list(set(re.findall(r"\[(std_\d+|internal_\d+|pub_\d+)\]", answer))),
+            "source_urls": source_ids,
             "faithfulness": eval_results["faithfulness"],
             "confidence_score": eval_results["composite_compliance_score"]
         }
@@ -199,13 +202,16 @@ class ComplianceAgent:
 
         # 2. Nihai Cevap (Sadeleştirilmiş Akış)
         answer_prompt = ChatPromptTemplate.from_messages([
-            ("system", """Sen Katılım Bankacılığı Uyum Denetçisisin.
+            ("system", """Sen Katılım Bankacılığı alanında uzman bir 'Uyum Denetçisi'sin.
  
- KURALLAR:
- 1. KESİN TÜRKÇE KİLİDİ: Sadece akıcı Türkçe konuş.
- 2. HİYERARŞİ: Asla ### kullanma. Başlıkları **BÜYÜK HARF VE BOLD** yaz.
- 3. SADELİK: Dekoratif semboller (---, ***, >) kullanma.
- 4. ÜSLUP: "Özetle" gibi ifadelerden kaçın, doğrudan cevap ver.
+ KURALLAR VE KESİN KISITLAMALAR:
+ 0. KRİTİK BAĞLAM KİLİDİ: SADECE sana verilen 'Bağlam' içindeki bilgileri kullan. Eğer sorunun cevabı Bağlam içinde DOĞRUDAN VE NET olarak yoksa, HİÇBİR AÇIKLAMA EKLEMEDEN Rule 6'yı uygula.
+ 1. KESİN TÜRKÇE KİLİDİ: Tüm cevabını SADECE akıcı ve doğal bir TÜRKÇE ile ver. 
+ 2. HİYERARŞİ: Başlıklar için asla ### veya ## gibi Markdown işaretleri kullanma. Başlıkları tamamen BÜYÜK HARF VE BOLD olarak yaz.
+ 3. SADELİK: ***, --- veya > gibi ayırıcı semboller kullanma. Doğrudan bilgiye odaklan.
+ 4. ATIF STİLİ: Metin içinde atıf yapma. Cevabın en sonunda **KAYNAK DÖKÜMANLAR:** başlığı altında kullandığın kaynakların tam isimlerini listele. Teknik döküman ID'lerini asla kullanıcıya gösterme.
+ 5. YÖNLENDİRME (REFERRAL) MESAJI: "Bu konu mevzuat ve banka politikalarında henüz netlik kazanmamış özel bir inceleme gerektirmektedir. Lütfen bankanızın **Danışma Kurulu'na** başvurun."
+ 6. MUTLAK DOĞRUDANLIK: Eğer bağlamdaki bilgiler kullanıcının sorusuna NET CEVAP VERMİYORSA, aradaki hiçbir bilgiyi özetleme. Hiçbir ön açıklama yapmadan SADECE Rule 5'teki YÖNLENDİRME MESAJI'nı yaz ve bitir.
  
  Bağlam:
  {context}
@@ -265,14 +271,14 @@ class ComplianceAgent:
             
             yield clean_chunk
 
-        # 3. Post-Processing & Validation (PARALEL ÇALIŞTIRMA)
-        # Metin bittiği an validator ve evaluation'ı aynı anda başlatıyoruz
-        validation_task = agent_tools.compliance_validator(full_answer, context)
-        evaluation_task = evaluation_service.evaluate_response(text, full_answer, context)
-        
-        validation, eval_results = await asyncio.gather(validation_task, evaluation_task)
+        yield "\n[GENERATION_DONE]\n"
 
-        # 4. Geçmişe Ekle (Arka planda veya metadata öncesi hızlıca)
+        # 3. Consolidated Post-Processing (SINGLE CALL)
+        # Replacing multiple sequential/parallel calls with one unified call for max performance
+        eval_results = await unified_eval_service.evaluate_full(text, full_answer, context)
+        validation = {"status": eval_results["status"], "reason": eval_results["reason"]}
+
+        # 4. Geçmişe Ekle
         history.add_user_message(text)
         history.add_ai_message(full_answer)
 
@@ -282,7 +288,7 @@ class ComplianceAgent:
             "thought": thought,
             "validation": validation,
             "evaluation": eval_results,
-            "source_urls": list(set(re.findall(r"\[(std_\d+|internal_\d+|pub_\d+)\]", full_answer))),
+            "source_urls": eval_results.get("sources", []),
             "confidence_score": eval_results["composite_compliance_score"]
         }
         yield f"\n[METADATA]{json.dumps(metadata)}"

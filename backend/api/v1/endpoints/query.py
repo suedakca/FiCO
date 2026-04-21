@@ -1,3 +1,4 @@
+import json
 from typing import List
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
@@ -66,11 +67,46 @@ async def create_query(query_in: schemas.QueryCreate, db: Session = Depends(get_
     )
 
 @router.post("/stream")
-async def stream_query(query_in: schemas.QueryBase):
-    """Anlık veri akışı (Streaming) sağlayan endpoint."""
+async def stream_query(query_in: schemas.QueryBase, db: Session = Depends(get_db)):
+    """Anlık veri akışı (Streaming) sağlayan ve sonucu veritabanına kaydeden endpoint."""
     async def event_generator():
+        full_answer = ""
+        metadata = {}
+        
         async for chunk in rag_service.stream_query(query_in.query_text):
+            if "[METADATA]" in chunk:
+                parts = chunk.split("[METADATA]")
+                full_answer += parts[0]
+                try:
+                    metadata = json.loads(parts[1])
+                except:
+                    pass
+            else:
+                full_answer += chunk
+            
             yield chunk
+
+        # Stream bittiğinde DB'ye kaydet
+        try:
+            db_query = database.Query(
+                user_id=query_in.user_id,
+                query_text=query_in.query_text
+            )
+            db.add(db_query)
+            db.commit()
+            db.refresh(db_query)
+
+            db_response = database.Response(
+                query_id=db_query.id,
+                answer_text=full_answer.strip(),
+                source_urls=",".join(metadata.get("source_urls", [])),
+                confidence_score=metadata.get("confidence_score", 0.9)
+            )
+            db.add(db_response)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"⚠️ Stream sonucu kaydedilemedi: {e}")
 
     return StreamingResponse(event_generator(), media_type="text/plain")
 

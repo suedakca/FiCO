@@ -46,6 +46,7 @@ class EvaluationService:
                     return 1.0
                 return None
 
+            # Parallel execute chains
             faith_result, rel_result = await asyncio.gather(
                 faith_chain.ainvoke({"context": context, "answer": answer}),
                 rel_chain.ainvoke({"question": question, "answer": answer})
