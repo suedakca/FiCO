@@ -8,7 +8,7 @@ from langchain_core.output_parsers import StrOutputParser
 class UnifiedEvaluationService:
     def __init__(self):
         # Using a smaller model for evaluation helps reduce resource contention
-        self.llm = ChatOllama(model="bazobehram/turkish-gemma-9b-t1", temperature=0, timeout=15)
+        self.llm = ChatOllama(model="llama3.2", temperature=0, timeout=15)
 
     async def evaluate_full(self, question: str, answer: str, context: str) -> Dict[str, Any]:
         """Consolidates all valuation/validation logic into a single LLM call for MAX performance."""

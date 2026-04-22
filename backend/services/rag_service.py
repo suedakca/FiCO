@@ -12,6 +12,7 @@ from core.config import settings
 from .chroma_service import chroma_service
 from .agent_tools import agent_tools
 from .unified_eval_service import unified_eval_service
+from .evaluation_service import evaluation_service
 
 class ComplianceAgent:
     def __init__(self):
@@ -21,6 +22,12 @@ class ComplianceAgent:
             top_p=0.85,
             repeat_penalty=1.1,
             num_predict=1024
+        )
+        # Fast Router Model for classification tasks
+        self.fast_llm = ChatOllama(
+            model="llama3.2",
+            temperature=0,
+            num_predict=64
         )
         self.db_uri = settings.SQLALCHEMY_DATABASE_URI
         
@@ -69,8 +76,8 @@ class ComplianceAgent:
         # 2. Yasaklı Teknik İbareler, ID'ler ve Düşünce Blokları
         patterns = [
             r'<think>.*?</think>', 
-            r'\b(std|internal|pub)_\d+\b', # Teknik ID'leri temizle (Örn: internal_115)
-            r'\[(std|internal|pub)_\d+\]', # Köşeli parantez içindekileri temizle (Örn: [std_066])
+            r'\b(std|internal|pub)_\d+\b(?::\s*)?', # Teknik ID'leri temizle (Örn: internal_115:)
+            r'[\[\(](std|internal|pub)_\d+[\]\)](?::\s*)?', # Parantez içindekileri temizle (Örn: (pub_013):)
             r'ID: \w+', r'Uyum Skoru: \d+', 
             r'Bağlam:', r'İçerik:', r'Geçmiş:', r'Context:',
             r'Atıf:', 
@@ -101,7 +108,7 @@ class ComplianceAgent:
             ("system", "Sen bir yönlendiricisin. Verilen soruyu 'GENEL' veya 'KARMASIK' olarak sınıflandır. Sadece kelimeyi döndür."),
             ("human", "{text}")
         ])
-        chain = prompt | self.llm | StrOutputParser()
+        chain = prompt | self.fast_llm | StrOutputParser()
         result = await chain.ainvoke({"text": text})
         return "KARMASIK" if "KARMASIK" in result.upper() else "GENEL"
 
@@ -117,12 +124,14 @@ class ComplianceAgent:
                        "Düşünceni 'Düşünce:' etiketiyle Türkçe olarak yaz."),
             ("human", "Soru: {text}")
         ])
-        thought_chain = thought_prompt | self.llm | StrOutputParser()
+        thought_chain = thought_prompt | self.fast_llm | StrOutputParser()
 
-        # Sequentialize independent tasks to avoid flooding Ollama
-        route   = await self._route_query(text)
-        thought = await thought_chain.ainvoke({"text": text})
-        context = await agent_tools.document_retriever(text)
+        # Parallelize independent tasks to avoid flooding Ollama sequentially
+        route_task = self._route_query(text)
+        thought_task = thought_chain.ainvoke({"text": text})
+        retrieval_task = agent_tools.document_retriever(text)
+        
+        route, thought, context = await asyncio.gather(route_task, thought_task, retrieval_task)
         
         if route == "KARMASIK":
             categories = ["Mudaraba", "Murabaha", "Sarf", "Teverruk", "Kripto", "Zekat", "Sukuk", "İjarah", "Muşaraka"]
@@ -139,10 +148,11 @@ class ComplianceAgent:
  0. KRİTİK BAĞLAM KİLİDİ: SADECE sana verilen 'Bağlam' içindeki bilgileri kullan. Eğer sorunun cevabı Bağlam içinde DOĞRUDAN VE NET olarak yoksa, kesinlikle yorum yapma ve HİÇBİR AÇIKLAMA EKLEMEDEN Rule 6'yı uygula.
  1. KESİN TÜRKÇE KİLİDİ: Tüm cevabını SADECE akıcı ve doğal bir TÜRKÇE ile ver. 
  2. HİYERARŞİ: Başlıklar için asla ### veya ## gibi Markdown işaretleri kullanma. Başlıkları tamamen BÜYÜK HARF VE BOLD olarak yaz.
- 3. SADELİK: ***, --- veya > gibi ayırıcı semboller kullanma. Doğrudan bilgiye odaklan.
- 4. ATIF STİLİ: Metin içerisinde asla [std_1] gibi teknik ID'leri yazma. Bunun yerine tüm cevap bittikten sonra en alta **KAYNAK DÖKÜMANLAR:** başlığı aç ve kullandığın tüm kaynakların TAM ADINI buraya listele.
+  3. ANALİTİK DERİNLİK: Bağlam içerisinde bir işlemin "neden" kısıtlandığına veya "nasıl" yapıldığına dair teknik detaylar (Örn: anlık geri satış, mülkiyet riski, garar vb.) varsa, bunları mutlaka açıklayarak cevap ver. Sadece kısıtlamayı söyleyip geçme, bağlamdaki mantığı kullanıcıya aktar.
+  4. ATIF STİLİ VE KAYNAKÇA: Metin içerisinde asla (std_1) veya [AAOIFI] gibi atıflar yapma. Teknik ID'leri (std_*, pub_*, internal_*) asla hiçbir yerde yazma. Bunun yerine tüm cevap bittikten sonra en alta **KAYNAK DÖKÜMANLAR:** başlığı aç ve kullandığın tüm kaynakların TAM ADINI her biri yeni bir satırda olacak şekilde listele.
  5. YÖNLENDİRME (REFERRAL) MESAJI: "Bu konu mevzuat ve banka politikalarında henüz netlik kazanmamış özel bir inceleme gerektirmektedir. Lütfen bankanızın **Danışma Kurulu'na** başvurun."
  6. MUTLAK DOĞRUDANLIK: Eğer bağlamdaki bilgiler kullanıcının sorusuna NET CEVAP VERMİYORSA (Örn: Gelecek tahmini, Metaverse vb.), aradaki hiçbir bilgiyi özetleme. Hiçbir ön açıklama yapma. SADECE Rule 5'teki cümleyi yaz ve dur.
+ 7. FORMAT: Cevap metni ile **KAYNAK DÖKÜMANLAR:** başlığı arasında bir boş satır bırak.
  
  Bağlam:
  {context}
@@ -166,9 +176,9 @@ class ComplianceAgent:
         # Post-processing temizliği
         answer = self._clean_agent_output(answer)
 
-        # 4. Compliance Validation & Evaluation (SEQUENTIAL)
-        validation = await agent_tools.compliance_validator(answer, context)
-        eval_results = await evaluation_service.evaluate_response(text, answer, context)
+        # 4. Consolidated Compliance Validation & Evaluation (SINGLE CALL)
+        eval_results = await unified_eval_service.evaluate_full(text, answer, context)
+        validation = {"status": eval_results["status"], "reason": eval_results["reason"]}
 
         # Geçmişe ekle
         history.add_user_message(text)
@@ -188,11 +198,13 @@ class ComplianceAgent:
     async def stream_query(self, text: str, user_id: str = "default_user") -> AsyncGenerator[str, None]:
         """FiCO Uyum Analisti Streaming (Akış) Döngüsü."""
         
-        route = await self._route_query(text)
+        # 1. Parallel Retrieval & Routing
+        route_task = self._route_query(text)
+        retrieval_task = agent_tools.document_retriever(text)
+        
+        route, context = await asyncio.gather(route_task, retrieval_task)
         history = self._get_history(user_id)
         
-        # 1. Retrieval (Hızlı Başlatmak için Thought kısmını pas geçiyoruz veya paralel alıyoruz)
-        context = await agent_tools.document_retriever(text)
         if route == "KARMASIK":
             detected_cat = "Genel"
             policy_context = await agent_tools.policy_aggregator(detected_cat)
@@ -208,10 +220,11 @@ class ComplianceAgent:
  0. KRİTİK BAĞLAM KİLİDİ: SADECE sana verilen 'Bağlam' içindeki bilgileri kullan. Eğer sorunun cevabı Bağlam içinde DOĞRUDAN VE NET olarak yoksa, HİÇBİR AÇIKLAMA EKLEMEDEN Rule 6'yı uygula.
  1. KESİN TÜRKÇE KİLİDİ: Tüm cevabını SADECE akıcı ve doğal bir TÜRKÇE ile ver. 
  2. HİYERARŞİ: Başlıklar için asla ### veya ## gibi Markdown işaretleri kullanma. Başlıkları tamamen BÜYÜK HARF VE BOLD olarak yaz.
- 3. SADELİK: ***, --- veya > gibi ayırıcı semboller kullanma. Doğrudan bilgiye odaklan.
- 4. ATIF STİLİ: Metin içinde atıf yapma. Cevabın en sonunda **KAYNAK DÖKÜMANLAR:** başlığı altında kullandığın kaynakların tam isimlerini listele. Teknik döküman ID'lerini asla kullanıcıya gösterme.
+  3. ANALİTİK DERİNLİK: Bağlam içerisinde bir işlemin "neden" kısıtlandığına veya "nasıl" yapıldığına dair teknik detaylar (Örn: anlık geri satış, mülkiyet riski, garar vb.) varsa, bunları mutlaka açıklayarak cevap ver. Sadece kısıtlamayı söyleyip geçme, bağlamdaki mantığı kullanıcıya aktar.
+  4. ATIF STİLİ VE KAYNAKÇA: Metin içerisinde asla atıf yapma. Teknik ID'leri (std_*, pub_*, internal_*) asla hiçbir yerde yazma. Cevabın en sonunda **KAYNAK DÖKÜMANLAR:** başlığı altında kullandığın kaynakların tam isimlerini her biri yeni bir satırda olacak şekilde listele. Teknik döküman ID'lerini asla kullanıcıya gösterme.
  5. YÖNLENDİRME (REFERRAL) MESAJI: "Bu konu mevzuat ve banka politikalarında henüz netlik kazanmamış özel bir inceleme gerektirmektedir. Lütfen bankanızın **Danışma Kurulu'na** başvurun."
  6. MUTLAK DOĞRUDANLIK: Eğer bağlamdaki bilgiler kullanıcının sorusuna NET CEVAP VERMİYORSA, aradaki hiçbir bilgiyi özetleme. Hiçbir ön açıklama yapmadan SADECE Rule 5'teki YÖNLENDİRME MESAJI'nı yaz ve bitir.
+ 7. FORMAT: Cevap metni ile **KAYNAK DÖKÜMANLAR:** başlığı arasında bir boş satır bırak.
  
  Bağlam:
  {context}
@@ -254,10 +267,14 @@ class ComplianceAgent:
                 else:
                     continue
 
-            # Akış anında saptanan kelimeleri temizle
+            # Akış anında saptanan kelimeleri ve teknik ID'leri temizle
             clean_chunk = chunk
+            # 1. Sözlük Değişimi
             for pattern, replacement in self.replacements.items():
                 clean_chunk = re.sub(pattern, replacement, clean_chunk, flags=re.IGNORECASE)
+            
+            # 2. Teknik ID Temizliği (std_, pub_, internal_ gibi ibareler ve opsiyonel iki nokta)
+            clean_chunk = re.sub(r'[\[\(]?(std|internal|pub)_\d+[\]\)]?(?::\s*)?', '', clean_chunk, flags=re.IGNORECASE)
             
             # Anti-Loop Guard: Cümle bazlı döngü tespiti
             if "." in clean_chunk:

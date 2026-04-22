@@ -6,7 +6,7 @@ from langchain_core.output_parsers import StrOutputParser
 
 class AgentTools:
     def __init__(self):
-        self.llm = ChatOllama(model="bazobehram/turkish-gemma-9b-t1", temperature=0)
+        self.llm = ChatOllama(model="llama3.2", temperature=0)
 
     async def document_retriever(self, query: str) -> str:
         """Belgeleri tarar ve en alakalı metin parçalarını kaynak bilgileriyle döner."""
@@ -15,7 +15,6 @@ class AgentTools:
         for res in results:
             meta = res["metadata"]
             formatted_results.append(
-                f"ID: {meta.get('id')}\n"
                 f"Kaynak: {meta.get('source')}\n"
                 f"İçerik: {res['content']}\n"
             )

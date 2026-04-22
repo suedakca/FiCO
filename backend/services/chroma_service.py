@@ -70,40 +70,57 @@ class ChromaService:
         self.bm25 = BM25Okapi(tokenized_corpus)
 
     def hybrid_search(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
-        """Perform Hybrid Search (Vector + BM25)."""
-        # 1. Vector Search
-        vector_results = self.vector_store.similarity_search_with_relevance_scores(query, k=k*2)
+        """Perform Optimized Hybrid Search (Vector + BM25)."""
+        # 1. Vector Search (Top k*5 candidates)
+        vector_results = self.vector_store.similarity_search_with_relevance_scores(query, k=k*5)
         
-        # 2. BM25 Search
+        # 2. BM25 Search (Top k*5 candidates)
         tokenized_query = query.lower().split()
+        bm25_top_n = self.bm25.get_top_n(tokenized_query, self.bm25_docs, n=k*5)
+        
+        # 3. Combine Candidates (Removing duplicates)
+        candidate_docs = {} # content -> {metadata, vector_score, bm25_score}
+        
+        # Add vector results
+        for doc, score in vector_results:
+            candidate_docs[doc.page_content] = {
+                "content": doc.page_content,
+                "metadata": doc.metadata,
+                "vector_score": score,
+                "bm25_score": 0.0
+            }
+            
+        # Add BM25 results (Get scores for them)
         bm25_scores = self.bm25.get_scores(tokenized_query)
+        # We need original indices to get BM25 scores
+        for doc_text in bm25_top_n:
+            if doc_text not in candidate_docs:
+                idx = self.bm25_docs.index(doc_text)
+                candidate_docs[doc_text] = {
+                    "content": doc_text,
+                    "metadata": self.bm25_metadatas[idx],
+                    "vector_score": 0.0,
+                    "bm25_score": bm25_scores[idx]
+                }
+            else:
+                idx = self.bm25_docs.index(doc_text)
+                candidate_docs[doc_text]["bm25_score"] = bm25_scores[idx]
+
+        # Normalize BM25 scores within candidates if necessary
+        max_bm25 = max([c["bm25_score"] for c in candidate_docs.values()]) if candidate_docs else 0
         
-        # Normalize BM25 scores to [0, 1]
-        if len(bm25_scores) > 0 and max(bm25_scores) > 0:
-            bm25_scores = bm25_scores / max(bm25_scores)
-        
-        # 3. Re-ranking (Simple Combination)
-        # Combine vector relevance and BM25 scores
         combined_results = []
-        
-        # Create a map for vector results
-        vector_map = {doc.page_content: score for doc, score in vector_results}
-        
-        for i, doc_text in enumerate(self.bm25_docs):
-            v_score = vector_map.get(doc_text, 0.0)
-            b_score = bm25_scores[i]
-            
-            # Hybrid Score (Weighted Average)
-            hybrid_score = (v_score * 0.7) + (b_score * 0.3)
-            
+        for cand in candidate_docs.values():
+            b_score = cand["bm25_score"] / max_bm25 if max_bm25 > 0 else 0
+            hybrid_score = (cand["vector_score"] * 0.7) + (b_score * 0.3)
             combined_results.append({
-                "content": doc_text,
-                "metadata": self.bm25_metadatas[i],
+                "content": cand["content"],
+                "metadata": cand["metadata"],
                 "score": hybrid_score
             })
             
-        # 3. Reranking Step (Cross-Encoder ile Yeniden Sıralama)
-        # Sadece ilk k*3 adayı rerank ederek performansı koru
+        # 4. Reranking Step (Cross-Encoder)
+        combined_results.sort(key=lambda x: x["score"], reverse=True)
         candidates = combined_results[:k*3]
         if not candidates:
             return []
@@ -111,15 +128,10 @@ class ChromaService:
         pairs = [[query, res["content"]] for res in candidates]
         rerank_scores = self.reranker.predict(pairs)
         
-        # Update scores with reranker scores
         for i, score in enumerate(rerank_scores):
             candidates[i]["rerank_score"] = float(score)
             
-        # Re-sort based on reranker score
         candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
-        
-        # Threshold Filter (Budama): Rerank skoru 0'ın üzerindekileri al (Logit skalası)
-        # Cross-encoder skoru genellikle 0 etrafındadır, alakasızlar negatiftir
         filtered_results = [res for res in candidates if res.get("rerank_score", -10) > -2.0]
         
         return filtered_results[:k]
